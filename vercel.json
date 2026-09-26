@@ -1,0 +1,5 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "buildCommand": "pnpm build",
+  "crons": [{ "path": "/app/api/cron/reminders", "schedule": "*/15 * * * *" }]
+}

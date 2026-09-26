@@ -1,0 +1,18 @@
+node_modules
+.next
+out
+.env*.local
+.env
+.DS_Store
+*.tsbuildinfo
+next-env.d.ts
+.vercel
+# Service worker output (built by @serwist/next on `pnpm build`)
+public/sw.js
+public/sw.js.map
+public/swe-worker-*.js
+public/swe-worker-*.js.map
+# Local test artefacts
+test-results
+playwright-report
+.pgtest
