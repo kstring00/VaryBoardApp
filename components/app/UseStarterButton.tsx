@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { setProgram } from "@/lib/client/store";
+import { getHabit, setProgram } from "@/lib/client/store";
 import type { PatientProgram } from "@/lib/types";
 
 export function UseStarterButton({ program }: { program: PatientProgram }) {
@@ -12,7 +12,7 @@ export function UseStarterButton({ program }: { program: PatientProgram }) {
       className="btn btn-secondary mt-5 w-full"
       onClick={() => {
         setProgram(program);
-        router.push("/app/plan");
+        router.push(getHabit()?.programCode === program.code ? "/app/plan" : "/app/start");
       }}
     >
       Use this plan

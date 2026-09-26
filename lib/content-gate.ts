@@ -33,8 +33,19 @@ export function gateProgram(p: PatientProgram & { reviewedByEric?: boolean }): P
   if (p.isStarter && !p.reviewedByEric && !drafts) return null;
   const ok = (m: Movement | null) => !!m && (drafts || m.reviewedByEric);
   const sessions: PlanSession[] = p.sessions
-    .map((s) => ({ ...s, blocks: s.blocks.filter((b) => ok(b.movement)).map((b) => ({ ...b, seatedAlternative: ok(b.seatedAlternative) ? b.seatedAlternative : null })) }))
+    .map((s) => ({ ...s, blocks: s.blocks.filter((b) => ok(b.movement)).map((b) => ({ ...b, seatedAlternative: ok(b.seatedAlternative) ? b.seatedAlternative : null, easierAlternative: ok(b.easierAlternative) ? b.easierAlternative : null })) }))
     .filter((s) => s.blocks.length > 0);
   if (!sessions.length) return null;
-  return { code: p.code, name: p.name, isStarter: p.isStarter, clinicName: p.clinicName, clinicPhone: p.clinicPhone, daysPerWeek: p.daysPerWeek, sessions };
+  return {
+    code: p.code,
+    name: p.name,
+    isStarter: p.isStarter,
+    clinicName: p.clinicName,
+    clinicPhone: p.clinicPhone,
+    assignedBy: p.assignedBy,
+    therapistNote: p.therapistNote,
+    noteUpdatedAt: p.noteUpdatedAt,
+    daysPerWeek: p.daysPerWeek,
+    sessions,
+  };
 }

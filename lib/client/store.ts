@@ -24,8 +24,12 @@ export interface LocalItem {
   skipped: boolean;
   /** Device only. */
   skipReason: string | null;
-  eased: boolean;
-  seated: boolean;
+  /** Which movement was used: the plan's, its easier alternative, or its seated alternative. */
+  variant: "plan" | "easier" | "seated";
+  /** "Make it easier" with no alternative: one step down in dose. */
+  doseEased: boolean;
+  /** A made_easier event was already logged for this exercise in this session. */
+  easedLogged: boolean;
 }
 
 export interface LocalCompletion {
@@ -64,13 +68,25 @@ export interface Settings {
   textSize: TextSize;
   motion: MotionPref;
   boardModel: BoardModel;
-  /** Always offer the seated version first (chair or wheelchair users). */
-  preferSeated: boolean;
+  /** "I use a chair or wheelchair": seated alternatives are used automatically. */
+  chairUser: boolean;
   /** Speak the exercise name and target when it starts. */
   spokenCues: boolean;
 }
 
 /** Device only, never sent anywhere. */
+/** The habit anchor and commitment (device only). */
+export type HabitAnchor = "coffee" | "walk" | "tv" | "bed" | "custom";
+export interface Habit {
+  programCode: string;
+  anchor: HabitAnchor;
+  /** "HH:MM", local. */
+  time: string;
+  /** ISO weekdays, 1 = Monday ... 7 = Sunday. */
+  days: number[];
+  committedAt: string | null;
+}
+
 export interface Profile {
   firstName: string;
   /** Local date-time "2026-10-02T14:30", or "" */
@@ -86,6 +102,8 @@ const KEYS = {
   outbox: "vb.outbox",
   settings: "vb.settings",
   profile: "vb.profile",
+  habit: "vb.habit",
+  a2hsShown: "vb.a2hsShown",
 } as const;
 
 const memory = new Map<string, string>();
@@ -199,7 +217,7 @@ export const setOutbox = (xs: OutboxEntry[]) => write(KEYS.outbox, xs.length ? J
 
 /* Settings --------------------------------------------------------------------------------- */
 
-export const DEFAULT_SETTINGS: Settings = { textSize: "default", motion: "system", boardModel: "vb", preferSeated: false, spokenCues: true };
+export const DEFAULT_SETTINGS: Settings = { textSize: "default", motion: "system", boardModel: "vb", chairUser: false, spokenCues: true };
 let settingsSnap: { raw: unknown; value: Settings } = { raw: null, value: DEFAULT_SETTINGS };
 export function getSettings(): Settings {
   const s = readJson<Partial<Settings> | null>(KEYS.settings, null);
@@ -238,6 +256,16 @@ export function updateProfile(patch: Partial<Profile>) {
   write(KEYS.profile, JSON.stringify({ ...getProfile(), ...patch }));
 }
 
+/* Habit + commitment (device only) --------------------------------------------------------- */
+
+export const getHabit = () => readJson<Habit | null>(KEYS.habit, null);
+export const setHabit = (h: Habit | null) => write(KEYS.habit, h ? JSON.stringify(h) : null);
+
+export function getA2hsShown(): boolean {
+  return read(KEYS.a2hsShown) === "1";
+}
+export const setA2hsShown = () => write(KEYS.a2hsShown, "1");
+
 /* Clear ------------------------------------------------------------------------------------ */
 
 export async function clearDeviceData() {
@@ -269,4 +297,5 @@ export const useCompletions = (): LocalCompletion[] | undefined => useSyncExtern
 export const useActive = (): ActiveSession | null | undefined => useSyncExternalStore(subscribe, getActive, () => undefined);
 export const useSettings = (): Settings => useSyncExternalStore(subscribe, getSettings, () => DEFAULT_SETTINGS);
 export const useProfile = (): Profile | undefined => useSyncExternalStore(subscribe, getProfile, () => undefined);
+export const useHabit = (): Habit | null | undefined => useSyncExternalStore(subscribe, getHabit, () => undefined);
 export const useOutboxCount = (): number => useSyncExternalStore(subscribe, () => getOutbox().length, () => 0);

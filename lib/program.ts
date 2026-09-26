@@ -34,16 +34,23 @@ export function spokenCue(name: string, b: Dose): string {
   return parts.join(", ");
 }
 
-/** Session length: the therapist's estimate, else ~4 s a rep plus holds and 30 s between sets. */
-export function sessionMinutes(s: PlanSession): number {
+/** Seconds counted per rep when there is no hold (the brief's formula needs a hold). */
+export const SECONDS_PER_REP_WITHOUT_HOLD = 3;
+export const SETUP_SECONDS = 20;
+/** Sessions longer than this are flagged in the builder: short sessions are easier to keep. */
+export const LONG_SESSION_MINUTES = 15;
+export const WARN_EXERCISES = 5;
+export const MAX_EXERCISES = 6;
+
+/** Estimated seconds: sum of sets x reps x hold, plus 20 s setup per exercise. */
+export function estimateSeconds(blocks: Dose[]): number {
+  return blocks.reduce((t, b) => t + (b.sets ?? 1) * (b.reps ?? 1) * (b.holdSeconds ?? SECONDS_PER_REP_WITHOUT_HOLD) + SETUP_SECONDS, 0);
+}
+
+/** Session length: the therapist's number if set, else the estimate. */
+export function sessionMinutes(s: Pick<PlanSession, "estMinutes" | "blocks">): number {
   if (s.estMinutes) return s.estMinutes;
-  let t = 0;
-  for (const b of s.blocks) {
-    const sets = b.sets ?? 1;
-    const perSet = b.reps ? b.reps * (4 + (b.holdSeconds ?? 0)) : b.holdSeconds ?? 0;
-    t += sets * (perSet + 30) + 30;
-  }
-  return Math.max(5, Math.round(t / 60));
+  return Math.max(1, Math.ceil(estimateSeconds(s.blocks) / 60));
 }
 
 export function exerciseCount(s: PlanSession): string {

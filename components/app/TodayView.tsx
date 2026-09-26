@@ -6,8 +6,11 @@ import { AppointmentRow } from "@/components/AppointmentRow";
 import { HexWeekRow } from "@/components/HexCharts";
 import { SessionCard } from "@/components/SessionCard";
 import { ArrowIcon } from "@/components/app/icons";
-import { setProgram, useActive, useCompletions, useOutboxCount, useProfile, useProgram } from "@/lib/client/store";
+import { setProgram, useActive, useCompletions, useHabit, useOutboxCount, useProfile, useProgram } from "@/lib/client/store";
+import { flushEvents } from "@/lib/client/events";
 import { flushOutbox } from "@/lib/client/submit";
+import { disableReminders, syncReminderText } from "@/lib/client/reminders";
+import { t } from "@/lib/copy";
 import { completionsBetween, nextSession, weekDots, weekRange } from "@/lib/progress";
 import type { PatientProgram } from "@/lib/types";
 
@@ -33,12 +36,14 @@ export function TodayView({ photo }: { photo: string | null }) {
   const completions = useCompletions();
   const active = useActive();
   const pending = useOutboxCount();
+  const habit = useHabit();
   const [ended, setEnded] = useState(false);
   const [now] = useState(() => new Date());
 
   // Keep the stored plan fresh (quietly; offline keeps the stored copy) and sync saved sessions.
   useEffect(() => {
     void flushOutbox();
+    void flushEvents();
     if (!program) return;
     const ctrl = new AbortController();
     fetch(`/app/api/program/${program.code}`, { signal: ctrl.signal, cache: "no-store" })
@@ -54,12 +59,18 @@ export function TodayView({ photo }: { photo: string | null }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [program?.code]);
 
+  const nextName = program && completions ? nextSession(program, completions).name : null;
+  useEffect(() => {
+    if (program !== undefined) syncReminderText(nextName);
+  }, [nextName, program]);
+
   if (program === undefined || completions === undefined) {
     return <div className="mt-6 h-80 animate-pulse rounded-2xl bg-surface" aria-busy="true" aria-label="Loading your plan" />;
   }
 
   const [from, to] = weekRange(now);
   const thisWeek = completionsBetween(completions, from, to).length;
+  const committed = !!program && habit?.programCode === program.code && !!habit.committedAt;
 
   return (
     <div className="mt-6 space-y-5">
@@ -67,7 +78,20 @@ export function TodayView({ photo }: { photo: string | null }) {
         (() => {
           const resuming = active && active.programCode === program.code && active.phase !== "done" ? active : null;
           const session = (resuming && program.sessions.find((s) => s.id === resuming.programSessionId)) || nextSession(program, completions);
-          return <SessionCard program={program} session={session} photo={photo} resume={resuming ? { index: resuming.index, total: resuming.queue.length } : null} />;
+          return (
+            <>
+              <SessionCard program={program} session={session} photo={photo} resume={resuming ? { index: resuming.index, total: resuming.queue.length } : null} />
+              {program.therapistNote && (
+                <figure className="border-l-4 border-mint pl-4">
+                  <blockquote className="font-display text-lg italic leading-snug text-ink">&ldquo;{program.therapistNote}&rdquo;</blockquote>
+                  <figcaption className="mt-1 text-sm text-muted">
+                    {t("today.noteLabel")}
+                    {program.assignedBy ? `, ${program.assignedBy}` : ""}
+                  </figcaption>
+                </figure>
+              )}
+            </>
+          );
         })()
       ) : (
         <section aria-labelledby="no-plan-h" className="rounded-2xl border border-line bg-mint-wash p-5 shadow-soft">
@@ -99,7 +123,9 @@ export function TodayView({ photo }: { photo: string | null }) {
             Weekly activity
           </h2>
           <p className="mt-1 text-muted">
-            {program ? (
+            {program && committed ? (
+              <span className="font-semibold text-ink">{t("today.weekPlan", { done: thisWeek, days: program.daysPerWeek })}</span>
+            ) : program ? (
               <>
                 <span className="font-semibold text-ink">
                   {thisWeek} of {program.daysPerWeek}
@@ -122,6 +148,36 @@ export function TodayView({ photo }: { photo: string | null }) {
       </section>
 
       <AppointmentRow />
+      <FromReminder />
     </div>
+  );
+}
+
+/** Opened from a reminder: turning them off is one tap here too (iPhone shows no notification actions). */
+function FromReminder() {
+  const from = useSyncExternalStore(
+    () => () => {},
+    () => new URLSearchParams(window.location.search).get("from"),
+    () => null,
+  );
+  const [off, setOff] = useState(false);
+  if (from !== "reminder") return null;
+  return (
+    <p className="text-center">
+      {off ? (
+        <span role="status">Reminders are off. You can turn them on again in Settings.</span>
+      ) : (
+        <button
+          type="button"
+          className="btn btn-quiet"
+          onClick={async () => {
+            await disableReminders();
+            setOff(true);
+          }}
+        >
+          {t("remind.off")}
+        </button>
+      )}
+    </p>
   );
 }

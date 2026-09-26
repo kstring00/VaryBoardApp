@@ -115,7 +115,7 @@ describe("database", { skip }, () => {
     await as({ role: "anon" }, async (c) => {
       assert.equal((await c.query("select * from public.programs where code = 'VBTEST'")).rowCount, 0);
     });
-    for (const table of ["completions", "completion_items", "clinicians"]) {
+    for (const table of ["completions", "exercise_events", "clinicians", "push_subscriptions"]) {
       await as({ role: "anon" }, async (c) => {
         await assert.rejects(c.query(`select * from public.${table}`), /permission denied/, table);
       });
@@ -144,18 +144,21 @@ describe("database", { skip }, () => {
     });
   });
 
-  it("round trip: code -> plan -> session -> completion -> adherence visible only to the owner", async () => {
+  it("round trip: code -> plan -> session -> events + completion -> adherence visible only to the owner", async () => {
     const completionId = randomUUID();
+    const device = randomUUID();
     const c = await pool.connect();
     try {
       await c.query("begin");
       await c.query("set local role anon");
       await c.query("select set_config('request.jwt.claims', '{\"role\":\"anon\"}', true)");
-      await c.query("insert into public.completions (id, program_code, device_id, program_session_id, completed_at, feel) values ($1, 'VBTEST', $2, $3, now(), 1)", [completionId, randomUUID(), S1.id]);
-      await c.query(
-        "insert into public.completion_items (completion_id, session_block_id, done, eased, seated) values ($1, $2, true, false, false), ($1, $3, true, true, false), ($1, $4, false, false, false), ($1, $5, true, false, true)",
-        [completionId, S1.blocks[0].id, S1.blocks[1].id, S1.blocks[2].id, S1.blocks[3].id],
-      );
+      const ev = "insert into public.exercise_events (client_event_id, program_code, device_id, session_block_id, event, occurred_at) values ($1, 'VBTEST', $2, $3, $4, now())";
+      await c.query(ev, [randomUUID(), device, S1.blocks[0].id, "done"]);
+      await c.query(ev, [randomUUID(), device, S1.blocks[1].id, "made_easier"]);
+      await c.query(ev, [randomUUID(), device, S1.blocks[1].id, "done"]);
+      await c.query(ev, [randomUUID(), device, S1.blocks[2].id, "skipped"]);
+      await c.query(ev, [randomUUID(), device, S1.blocks[3].id, "done"]);
+      await c.query("insert into public.completions (id, program_code, device_id, program_session_id, completed_at, feel) values ($1, 'VBTEST', $2, $3, now(), 1)", [completionId, device, S1.id]);
       await c.query("commit");
     } finally {
       c.release();
@@ -163,26 +166,114 @@ describe("database", { skip }, () => {
 
     await as({ role: "authenticated", uid: A }, async (c) => {
       const r = await c.query(
-        `select count(distinct c.id)::int completions, min(c.feel) feel, count(*) filter (where i.done)::int done,
-                count(*) filter (where not i.done)::int skipped, count(*) filter (where i.eased)::int eased, count(*) filter (where i.seated)::int seated
-         from public.completions c join public.completion_items i on i.completion_id = c.id where c.program_code = 'VBTEST'`,
+        `select count(*) filter (where event = 'done')::int done, count(*) filter (where event = 'skipped')::int skipped,
+                count(*) filter (where event = 'made_easier')::int eased
+         from public.exercise_events where program_code = 'VBTEST'`,
       );
-      assert.deepEqual(r.rows[0], { completions: 1, feel: 1, done: 3, skipped: 1, eased: 1, seated: 1 });
+      assert.deepEqual(r.rows[0], { done: 3, skipped: 1, eased: 1 });
+      const comp = await c.query("select feel from public.completions where program_code = 'VBTEST'");
+      assert.deepEqual(comp.rows, [{ feel: 1 }]);
     });
     await as({ role: "authenticated", uid: B }, async (c) => {
       assert.equal((await c.query("select * from public.completions where program_code = 'VBTEST'")).rowCount, 0, "B cannot read A's completions");
-      assert.equal((await c.query("select * from public.completion_items where completion_id = $1", [completionId])).rowCount, 0);
+      assert.equal((await c.query("select * from public.exercise_events where program_code = 'VBTEST'")).rowCount, 0, "B cannot read A's exercise events");
     });
     // Insert-only: the patient device cannot read back, update or delete.
+    for (const sql of ["select * from public.exercise_events", "update public.completions set feel = 3", "delete from public.exercise_events"]) {
+      await as({ role: "anon" }, async (c) => {
+        await assert.rejects(c.query(sql), /permission denied/, sql);
+      });
+    }
+  });
+
+  it("exercise events are idempotent: a retried client_event_id never duplicates", async () => {
+    const id = randomUUID();
+    const device = randomUUID();
+    const insert = (c: pg.PoolClient) =>
+      c.query("insert into public.exercise_events (client_event_id, program_code, device_id, session_block_id, event, occurred_at) values ($1, 'VBTEST', $2, $3, 'done', now())", [id, device, S2.blocks[0].id]);
     await as({ role: "anon" }, async (c) => {
-      await assert.rejects(c.query("update public.completions set feel = 3 where id = $1", [completionId]), /permission denied/);
-    });
-    await as({ role: "anon" }, async (c) => {
-      await assert.rejects(c.query("delete from public.completion_items where completion_id = $1", [completionId]), /permission denied/);
+      await insert(c);
+      await c.query("savepoint s");
+      await assert.rejects(insert(c), /duplicate key/);
+      await c.query("rollback to savepoint s");
+      await c.query("set local role service_role");
+      const n = await c.query("select count(*)::int n from public.exercise_events where client_event_id = $1", [id]);
+      assert.equal(n.rows[0].n, 1);
     });
   });
 
-  it("completions: rejects unknown codes, sessions from another program, blocks from another session, bad feel", async () => {
+  it("exercise events: only for an active code, an exercise of that program, and a plausible time", async () => {
+    const q = "insert into public.exercise_events (client_event_id, program_code, device_id, session_block_id, event, occurred_at) values ($1, $2, $3, $4, $5, $6)";
+    const cases: [string, unknown[]][] = [
+      ["unknown code", [randomUUID(), "ZZZZZZ", randomUUID(), S1.blocks[0].id, "done", new Date()]],
+      ["block from another program", [randomUUID(), "START1", randomUUID(), S1.blocks[0].id, "done", new Date()]],
+      ["bad event name", [randomUUID(), "VBTEST", randomUUID(), S1.blocks[0].id, "cheered", new Date()]],
+      ["future time", [randomUUID(), "VBTEST", randomUUID(), S1.blocks[0].id, "done", new Date(Date.now() + 864e5)]],
+      ["older than 30 days", [randomUUID(), "VBTEST", randomUUID(), S1.blocks[0].id, "done", new Date(Date.now() - 31 * 864e5)]],
+    ];
+    for (const [name, args] of cases) {
+      await as({ role: "anon" }, async (c) => {
+        await assert.rejects(c.query(q, args), /row-level security|check constraint|foreign key/, name);
+      });
+    }
+  });
+
+  it("therapist note: 120 characters max, no identifiers, timestamped", async () => {
+    await as({ role: "authenticated", uid: A }, async (c) => {
+      await c.query("savepoint s");
+      await assert.rejects(c.query("update public.programs set therapist_note = $1 where code = 'VBTEST'", ["x".repeat(121)]), /check constraint/);
+      await c.query("rollback to savepoint s");
+      await assert.rejects(c.query("update public.programs set therapist_note = 'Call me at 5550100' where code = 'VBTEST'"), /check constraint/);
+      await c.query("rollback to savepoint s");
+      await c.query("update public.programs set therapist_note = $1 where code = 'VBTEST'", ["y".repeat(120)]);
+      const r = await c.query("select note_updated_at is not null as stamped from public.programs where code = 'VBTEST'");
+      assert.equal(r.rows[0].stamped, true);
+    });
+    await as({ role: "anon" }, async (c) => {
+      const p = (await c.query("select public.get_program('VBTEST') as p")).rows[0].p;
+      assert.equal(p.therapist_note, "Keep the band light this week. Slow and steady beats fast.");
+      assert.equal(p.assigned_by, "Test Clinician");
+    });
+  });
+
+  it("create_program blocks a 7th exercise in a session", async () => {
+    const ids = Array.from({ length: 7 }, () => ({ movement_id: mv("draft-strengthen-standing-band-row"), reps: 5 }));
+    await as({ role: "authenticated", uid: A }, async (c) => {
+      await assert.rejects(c.query("select public.create_program('Plan D', null, null, 3, $1::jsonb)", [JSON.stringify([{ name: "Long", blocks: ids }])]), /1 to 6 exercises/);
+    });
+    await as({ role: "authenticated", uid: A }, async (c) => {
+      const r = await c.query("select public.create_program('Plan E', null, null, 3, $1::jsonb, 'Go gently') as code", [JSON.stringify([{ name: "Six", blocks: ids.slice(0, 6) }])]);
+      assert.match(r.rows[0].code, /^[A-Z0-9]{6}$/);
+    });
+  });
+
+  it("push subscriptions: devices write only through the RPCs, nobody reads but the server", async () => {
+    const device = randomUUID();
+    const endpoint = "https://push.example.test/abc";
+    await as({ role: "anon" }, async (c) => {
+      await c.query("select public.save_push_subscription($1, $2, 'p256', 'auth', '08:00', 'America/Chicago', '{1,3,5}')", [device, endpoint]);
+      await c.query("savepoint s");
+      await assert.rejects(c.query("select * from public.push_subscriptions"), /permission denied/);
+      await c.query("rollback to savepoint s");
+      await assert.rejects(c.query("update public.push_subscriptions set active = false"), /permission denied/);
+      await c.query("rollback to savepoint s");
+      const wrong = await c.query("select public.set_push_active($1, $2, false) as ok", [randomUUID(), endpoint]);
+      assert.equal(wrong.rows[0].ok, false, "another device id cannot switch it off");
+      const right = await c.query("select public.set_push_active($1, $2, false) as ok", [device, endpoint]);
+      assert.equal(right.rows[0].ok, true);
+      await c.query("set local role service_role");
+      const row = (await c.query("select active, reminder_days, timezone from public.push_subscriptions where endpoint = $1", [endpoint])).rows[0];
+      assert.deepEqual(row, { active: false, reminder_days: [1, 3, 5], timezone: "America/Chicago" });
+    });
+    await as({ role: "authenticated", uid: A }, async (c) => {
+      await assert.rejects(c.query("select * from public.push_subscriptions"), /permission denied/, "clinicians cannot read them either");
+    });
+    await as({ role: "anon" }, async (c) => {
+      await assert.rejects(c.query("select public.save_push_subscription($1, 'https://x.test/1', 'p', 'a', '08:00', 'Mars/Olympus', null)", [randomUUID()]), /time zone/);
+    });
+  });
+
+  it("completions: rejects unknown codes, sessions from another program, bad feel", async () => {
     await as({ role: "anon" }, async (c) => {
       await assert.rejects(c.query("insert into public.completions (program_code, device_id, program_session_id, completed_at) values ('ZZZZZZ', $1, $2, now())", [randomUUID(), S1.id]));
     });
@@ -194,9 +285,6 @@ describe("database", { skip }, () => {
     const cid = randomUUID();
     await as({ role: "anon" }, async (c) => {
       await c.query("insert into public.completions (id, program_code, device_id, program_session_id, completed_at) values ($1, 'VBTEST', $2, $3, now())", [cid, randomUUID(), S1.id]);
-      await c.query("savepoint s");
-      await assert.rejects(c.query("insert into public.completion_items (completion_id, session_block_id, done) values ($1, $2, true)", [cid, S2.blocks[0].id]), /row-level security/);
-      await c.query("rollback to savepoint s");
       await assert.rejects(c.query("insert into public.completions (program_code, device_id, program_session_id, completed_at, feel) values ('VBTEST', $1, $2, now(), 4)", [randomUUID(), S1.id]), /check constraint/);
     });
     await as({ role: "authenticated", uid: B }, async (c) => {

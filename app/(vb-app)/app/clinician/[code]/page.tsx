@@ -4,7 +4,8 @@ import { notFound } from "next/navigation";
 import QRCode from "qrcode";
 import { AdherenceCard } from "@/components/AdherenceCard";
 import { GENRE_NAMES } from "@/lib/genres";
-import { getCompletions, getOwnProgram, requireClinician } from "@/lib/clinician";
+import { NoteForm } from "@/components/clinician/NoteForm";
+import { getCompletions, getEvents, getOwnProgram, requireClinician } from "@/lib/clinician";
 import { siteUrl } from "@/lib/env";
 import { describePattern } from "@/lib/board/geometry";
 import { normalizeCode } from "@/lib/program-shape";
@@ -20,7 +21,7 @@ export default async function ProgramPage({ params, searchParams }: PageProps<"/
   const own = await getOwnProgram(c, code);
   if (!own) notFound();
   const { created } = await searchParams;
-  const completions = await getCompletions(c, code);
+  const [completions, events] = await Promise.all([getCompletions(c, code), getEvents(c, code)]);
   const p = own.program;
   const link = `${siteUrl()}/app/code?c=${p.code}`;
   const qr = await QRCode.toString(link, { type: "svg", margin: 1, color: { dark: "#16302b", light: "#ffffff" } });
@@ -57,7 +58,11 @@ export default async function ProgramPage({ params, searchParams }: PageProps<"/
       </section>
 
       <div className="mt-6">
-        <AdherenceCard program={p} completions={completions} />
+        <AdherenceCard program={p} completions={completions} events={events} />
+      </div>
+
+      <div className="mt-6">
+        <NoteForm code={p.code} note={p.therapistNote} updatedAt={p.noteUpdatedAt} />
       </div>
 
       <section aria-labelledby="plan-h" className="card mt-6 p-5">

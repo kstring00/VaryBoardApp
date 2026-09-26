@@ -26,7 +26,9 @@ import {
   type LocalCompletion,
   type LocalItem,
 } from "@/lib/client/store";
+import { flushEvents, logEvent } from "@/lib/client/events";
 import { queueCompletion } from "@/lib/client/submit";
+import { t } from "@/lib/copy";
 import { GENRE_NAMES } from "@/lib/genres";
 import { easierDose, prescription, spokenCue } from "@/lib/program";
 import { completionsBetween, dayKey, nextSession, weekDots, weekRange } from "@/lib/progress";
@@ -150,12 +152,14 @@ function Player({ program, session, active, photo }: { program: PatientProgram; 
       done: false,
       skipped: false,
       skipReason: null,
-      eased: false,
-      seated: settings.preferSeated && !!b.seatedAlternative,
+      // "I use a chair or wheelchair" (Settings): the seated version is used automatically.
+      variant: settings.chairUser && b.seatedAlternative ? "seated" : "plan",
+      doseEased: false,
+      easedLogged: false,
     };
   const setItem = (b: PlanBlock, patch: Partial<LocalItem>, rest: Partial<ActiveSession> = {}) => {
     const next = { ...itemFor(b), ...patch };
-    const movement = next.seated && b.seatedAlternative ? b.seatedAlternative : b.movement;
+    const movement = movementFor(b, next);
     next.movementId = movement.id;
     next.movementName = movement.name;
     setActive({ ...active, items: { ...active.items, [b.id]: next }, ...rest });
@@ -165,7 +169,38 @@ function Player({ program, session, active, photo }: { program: PatientProgram; 
     setActive({ ...active, items, index: last ? active.index : active.index + 1, phase: last ? "feel" : "setup", timer: undefined });
     setTab("setup");
   };
-  const finishExercise = (b: PlanBlock, patch: Partial<LocalItem>) => advance({ ...active.items, [b.id]: { ...itemFor(b), ...patch } });
+  /** Done or skipped: saved on the device this instant (event queue), then the next exercise. */
+  const finishExercise = (b: PlanBlock, patch: Pick<LocalItem, "done" | "skipped">) => {
+    void logEvent(active.programCode, b.id, patch.done ? "done" : "skipped");
+    advance({ ...active.items, [b.id]: { ...itemFor(b), ...patch } });
+  };
+  /**
+   * "Make it easier", one tap: swap in the easier alternative, else the seated one, else one step
+   * down in dose. Logs made_easier once per exercise so the therapist sees it.
+   */
+  const makeEasier = (b: PlanBlock) => {
+    const it = itemFor(b);
+    let patch: Partial<LocalItem>;
+    if (b.easierAlternative && it.variant !== "easier") patch = { variant: "easier" };
+    else if (b.seatedAlternative && it.variant === "plan") patch = { variant: "seated" };
+    else if (!it.doseEased) patch = { doseEased: true };
+    else return;
+    if (!it.easedLogged) {
+      void logEvent(active.programCode, b.id, "made_easier");
+      patch.easedLogged = true;
+    }
+    setItem(b, patch, { timer: undefined });
+  };
+  const toggleSeated = (b: PlanBlock) => {
+    const it = itemFor(b);
+    if (it.variant === "seated") return setItem(b, { variant: "plan" }, { timer: undefined });
+    const patch: Partial<LocalItem> = { variant: "seated" };
+    if (!it.easedLogged && !settings.chairUser) {
+      void logEvent(active.programCode, b.id, "made_easier");
+      patch.easedLogged = true;
+    }
+    setItem(b, patch, { timer: undefined });
+  };
   const doLater = () => {
     const queue = [...active.queue];
     const [id] = queue.splice(active.index, 1);
@@ -173,6 +208,11 @@ function Player({ program, session, active, photo }: { program: PatientProgram; 
     setActive({ ...active, queue, phase: "setup", timer: undefined });
     setTab("setup");
   };
+
+  // Send anything saved while offline as soon as the player opens.
+  useEffect(() => {
+    void flushEvents();
+  }, []);
 
   const progressHexes = (
     <ol className="flex items-center gap-1.5" aria-label={`Exercise ${Math.min(active.index + 1, total)} of ${total}`}>
@@ -229,7 +269,7 @@ function Player({ program, session, active, photo }: { program: PatientProgram; 
   /* ---- Setup ------------------------------------------------------------------------------ */
   if (active.phase === "setup" && block) {
     const it = itemFor(block);
-    const mv = it.seated && block.seatedAlternative ? block.seatedAlternative : block.movement;
+    const mv = movementFor(block, it);
     const anchor = block.anchor ?? mv.defaultAnchor;
     const saved = !!block.anchor;
     return (
@@ -280,7 +320,7 @@ function Player({ program, session, active, photo }: { program: PatientProgram; 
                 </div>
               ),
               demo: <VideoPlayer name={mv.name} videoUrl={mv.videoUrl} posterUrl={mv.posterUrl} />,
-              instructions: <Instructions block={block} eased={it.eased} seated={it.seated} />,
+              instructions: <Instructions block={block} item={it} />,
             }}
           />
         </div>
@@ -307,8 +347,10 @@ function Player({ program, session, active, photo }: { program: PatientProgram; 
   /* ---- Exercise --------------------------------------------------------------------------- */
   if (active.phase === "exercise" && block) {
     const it = itemFor(block);
-    const mv = it.seated && block.seatedAlternative ? block.seatedAlternative : block.movement;
-    const dose = it.eased ? easierDose(block) : { sets: block.sets, reps: block.reps, holdSeconds: block.holdSeconds };
+    const mv = movementFor(block, it);
+    const dose = doseFor(block, it);
+    const eased = it.variant === "easier" || it.doseEased || (it.variant === "seated" && !settings.chairUser);
+    const canEase = (!!block.easierAlternative && it.variant !== "easier") || (!!block.seatedAlternative && it.variant === "plan") || !it.doseEased;
     const step = active.timer?.blockId === block.id ? active.timer.step : 0;
     return (
       <main className="mx-auto max-w-xl px-4 pb-40 pt-[max(env(safe-area-inset-top),8px)]">
@@ -321,11 +363,11 @@ function Player({ program, session, active, photo }: { program: PatientProgram; 
         </h1>
         <p className="mt-2 text-xl font-semibold">
           {prescription(dose)}
-          {it.eased && <span className="chip ml-2 align-middle">Easier today</span>}
+          {eased && <span className="chip ml-2 align-middle">{t("session.easierOn")}</span>}
         </p>
         <div className="mt-4">
           <Timer
-            key={`${block.id}-${it.eased}-${it.seated}`}
+            key={`${block.id}-${it.variant}-${it.doseEased}`}
             dose={dose}
             initialStep={step}
             spoken={settings.spokenCues}
@@ -337,18 +379,25 @@ function Player({ program, session, active, photo }: { program: PatientProgram; 
           />
         </div>
         <div className="mt-4 grid gap-3">
-          <button type="button" className="btn btn-secondary w-full" aria-pressed={it.eased} onClick={() => setItem(block, { eased: !it.eased }, { timer: undefined })}>
-            {it.eased ? "Back to my plan's amount" : "Make it easier"}
-          </button>
-          {block.seatedAlternative && (
-            <button type="button" className="btn btn-secondary w-full" aria-pressed={it.seated} onClick={() => setItem(block, { seated: !it.seated }, { timer: undefined })}>
-              {it.seated ? "Use the standing version" : "Use the seated version"}
+          {canEase && (
+            <button type="button" className="btn btn-secondary w-full" onClick={() => makeEasier(block)}>
+              {t("session.makeEasier")}
+            </button>
+          )}
+          {block.seatedAlternative && !settings.chairUser && it.variant !== "easier" && (
+            <button type="button" className="btn btn-secondary w-full" aria-pressed={it.variant === "seated"} onClick={() => toggleSeated(block)}>
+              {it.variant === "seated" ? "Use the standing version" : "Use the seated version"}
+            </button>
+          )}
+          {(it.variant === "easier" || it.doseEased) && (
+            <button type="button" className="btn btn-quiet w-full" onClick={() => setItem(block, { variant: settings.chairUser && block.seatedAlternative ? "seated" : "plan", doseEased: false }, { timer: undefined })}>
+              Back to my plan
             </button>
           )}
         </div>
         <details className="card mt-4 p-4">
           <summary className="min-h-12 cursor-pointer py-2 text-lg font-semibold">Instructions</summary>
-          <Instructions block={block} eased={it.eased} seated={it.seated} />
+          <Instructions block={block} item={it} />
         </details>
         <ActionBar>
           <button type="button" className="btn btn-primary w-full" onClick={() => finishExercise(block, { done: true, skipped: false })}>
@@ -460,9 +509,20 @@ function MissingSession() {
   return <main className="min-h-dvh" aria-busy="true" />;
 }
 
-function Instructions({ block, eased, seated }: { block: PlanBlock; eased: boolean; seated: boolean }) {
-  const mv = seated && block.seatedAlternative ? block.seatedAlternative : block.movement;
-  const dose = eased ? easierDose(block) : block;
+function movementFor(b: PlanBlock, it: LocalItem) {
+  if (it.variant === "easier" && b.easierAlternative) return b.easierAlternative;
+  if (it.variant === "seated" && b.seatedAlternative) return b.seatedAlternative;
+  return b.movement;
+}
+
+function doseFor(b: PlanBlock, it: LocalItem) {
+  const base = { sets: b.sets, reps: b.reps, holdSeconds: b.holdSeconds };
+  return it.doseEased ? easierDose(base) : base;
+}
+
+function Instructions({ block, item }: { block: PlanBlock; item: LocalItem }) {
+  const mv = movementFor(block, item);
+  const dose = doseFor(block, item);
   return (
     <div className="space-y-3">
       <p className="text-lg font-semibold">{prescription(dose)}</p>

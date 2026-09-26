@@ -66,7 +66,7 @@ describe("progress", () => {
     startedAt: d.toISOString(),
     completedAt: d.toISOString(),
     feel: 2,
-    items: done.map((x, i) => ({ id: `${i}`, blockId: `${i}`, movementId: "m", movementName: "m", done: x, skipped: !x, skipReason: null, eased: false, seated: false })),
+    items: done.map((x, i) => ({ id: `${i}`, blockId: `${i}`, movementId: "m", movementName: "m", done: x, skipped: !x, skipReason: null, variant: "plan" as const, doseEased: false, easedLogged: false })),
   });
   it("weeks start on Monday and count sessions per day", () => {
     assert.equal(dayKey(startOfWeek(now)), "2026-09-21");

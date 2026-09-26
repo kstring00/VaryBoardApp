@@ -13,14 +13,12 @@ export async function POST(req: Request) {
   } catch {
     return NextResponse.json({ error: "bad_json" }, { status: 400 });
   }
-  const items = Array.isArray(b.items) ? (b.items as Record<string, unknown>[]) : [];
   const ok =
     typeof b.id === "string" && UUID.test(b.id) &&
     typeof b.device_id === "string" && UUID.test(b.device_id) &&
     typeof b.program_code === "string" &&
     typeof b.program_session_id === "string" &&
-    typeof b.completed_at === "string" && !Number.isNaN(Date.parse(b.completed_at)) &&
-    items.every((i) => typeof i.id === "string" && typeof i.session_block_id === "string");
+    typeof b.completed_at === "string" && !Number.isNaN(Date.parse(b.completed_at));
   if (!ok) return NextResponse.json({ error: "invalid" }, { status: 400 });
   const c: DemoCompletion = {
     id: b.id as string,
@@ -29,7 +27,6 @@ export async function POST(req: Request) {
     programSessionId: b.program_session_id as string,
     completedAt: b.completed_at as string,
     feel: typeof b.feel === "number" ? b.feel : null,
-    items: items.map((i) => ({ id: i.id as string, sessionBlockId: i.session_block_id as string, done: i.done === true, eased: i.eased === true, seated: i.seated === true })),
   };
   const r = demo.insertCompletion(c);
   if (r === "duplicate") return NextResponse.json({ error: "duplicate" }, { status: 409 });

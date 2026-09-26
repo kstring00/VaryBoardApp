@@ -1,5 +1,5 @@
 import type { AnchorCell, BoardModel, GenreSlug, Movement, PatientProgram, PlanSession } from "@/lib/types";
-import { MOVEMENTS, type SeedProgram } from "@/content/seed";
+import { MOVEMENTS, TEST_CLINICIAN, type SeedProgram } from "@/content/seed";
 
 /** Row shapes from Supabase and the mapping into app types. Shared by lib/data and lib/clinician. */
 
@@ -14,6 +14,7 @@ export interface MovementRow {
   needs_chair: boolean;
   default_anchor: AnchorCell | null;
   seated_alternative_id: string | null;
+  easier_alternative_id: string | null;
   video_url: string | null;
   poster_url: string | null;
   cues: string[] | null;
@@ -27,7 +28,7 @@ export interface MovementRow {
 }
 
 export const MOVEMENT_COLUMNS =
-  "id, name, slug, level, board_models, needs_band, needs_handrail, needs_chair, default_anchor, seated_alternative_id, video_url, poster_url, cues, safety_note, default_sets, default_reps, default_hold_seconds, reviewed_by_eric, reviewed_at, genres(slug)";
+  "id, name, slug, level, board_models, needs_band, needs_handrail, needs_chair, default_anchor, seated_alternative_id, easier_alternative_id, video_url, poster_url, cues, safety_note, default_sets, default_reps, default_hold_seconds, reviewed_by_eric, reviewed_at, genres(slug)";
 
 export function toMovement(r: MovementRow): Movement {
   return {
@@ -42,6 +43,7 @@ export function toMovement(r: MovementRow): Movement {
     needsChair: r.needs_chair,
     defaultAnchor: r.default_anchor && typeof r.default_anchor === "object" ? r.default_anchor : null,
     seatedAlternativeId: r.seated_alternative_id,
+    easierAlternativeId: r.easier_alternative_id,
     videoUrl: r.video_url || null,
     posterUrl: r.poster_url || null,
     cues: r.cues ?? [],
@@ -61,6 +63,9 @@ export interface RpcProgram {
   name: string;
   clinic_name: string | null;
   clinic_phone: string | null;
+  assigned_by?: string | null;
+  therapist_note?: string | null;
+  note_updated_at?: string | null;
   reviewed_by_eric: boolean;
   days_per_week: number;
   sessions: {
@@ -85,7 +90,8 @@ export function fromRpc(rp: RpcProgram, movements: Movement[]): RawProgram {
       const movement = byId.get(b.movement_id);
       if (!movement) return [];
       const seated = movement.seatedAlternativeId ? byId.get(movement.seatedAlternativeId) ?? null : null;
-      return [{ id: b.id, movementId: b.movement_id, sort: b.sort, sets: b.sets, reps: b.reps, holdSeconds: b.hold_seconds, bandColor: b.band_color, anchor: b.anchor ?? null, movement, seatedAlternative: seated }];
+      const easier = movement.easierAlternativeId ? byId.get(movement.easierAlternativeId) ?? null : null;
+      return [{ id: b.id, movementId: b.movement_id, sort: b.sort, sets: b.sets, reps: b.reps, holdSeconds: b.hold_seconds, bandColor: b.band_color, anchor: b.anchor ?? null, movement, seatedAlternative: seated, easierAlternative: easier }];
     }),
   }));
   return {
@@ -94,6 +100,9 @@ export function fromRpc(rp: RpcProgram, movements: Movement[]): RawProgram {
     isStarter: rp.is_starter,
     clinicName: rp.clinic_name,
     clinicPhone: rp.clinic_phone,
+    assignedBy: rp.is_starter ? null : rp.assigned_by ?? null,
+    therapistNote: rp.therapist_note ?? null,
+    noteUpdatedAt: rp.note_updated_at ?? null,
     daysPerWeek: rp.days_per_week,
     reviewedByEric: rp.reviewed_by_eric,
     sessions,
@@ -109,6 +118,9 @@ export function seedToRpc(p: SeedProgram): RpcProgram {
     name: p.name,
     clinic_name: p.clinicName,
     clinic_phone: p.clinicPhone,
+    assigned_by: p.clinicianId === TEST_CLINICIAN.id ? TEST_CLINICIAN.displayName : null,
+    therapist_note: p.therapistNote,
+    note_updated_at: p.therapistNote ? "2026-09-21T09:00:00.000Z" : null,
     reviewed_by_eric: p.reviewedByEric,
     days_per_week: p.daysPerWeek,
     sessions: p.sessions.map((s, si) => ({

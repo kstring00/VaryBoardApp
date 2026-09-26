@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { ReminderSettings } from "@/components/app/ReminderSettings";
 import { SettingsView } from "@/components/app/SettingsView";
 
 export const metadata: Metadata = {
@@ -12,7 +13,15 @@ export default function SettingsPage() {
     <>
       <h1 className="mt-2 text-4xl">Your details &amp; settings</h1>
       <p className="mt-2 text-muted">Everything on this page stays on this phone.</p>
+      <div className="mt-6">
+        <ReminderSettings />
+      </div>
       <SettingsView />
+      <p className="mt-5 text-center">
+        <Link href="/app/privacy" className="text-teal underline">
+          What the app stores, and where
+        </Link>
+      </p>
       <section aria-labelledby="clin-h" className="card mt-5 p-5">
         <h2 id="clin-h" className="text-2xl">
           For clinicians

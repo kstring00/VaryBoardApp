@@ -54,8 +54,8 @@ export async function exportProgressSummary() {
   const items = period.flatMap((x) => x.items);
   const done = items.filter((i) => i.done).length;
   const skipped = items.filter((i) => i.skipped);
-  const eased = items.filter((i) => i.eased).length;
-  const seated = items.filter((i) => i.seated).length;
+  const eased = items.filter((i) => i.variant === "easier" || i.doseEased).length;
+  const seated = items.filter((i) => i.variant === "seated").length;
   c.text("Exercises (last 4 weeks)", bold, 13, teal);
   c.text(`${done} of ${items.length} exercises done${items.length ? ` (${Math.round((done / items.length) * 100)}%)` : ""}. Made easier ${eased} ${eased === 1 ? "time" : "times"}. Seated version ${seated} ${seated === 1 ? "time" : "times"}. Skipped ${skipped.length}.`, regular, 11, ink, 2);
   const reasons = new Map<string, number>();

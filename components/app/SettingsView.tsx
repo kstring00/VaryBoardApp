@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { MODEL_NAMES } from "@/lib/board/geometry";
+import { t } from "@/lib/copy";
 import { clearDeviceData, updateProfile, updateSettings, useProfile, useSettings, type Settings } from "@/lib/client/store";
 
 function Choice<T extends string>({ legend, name, value, options, onChange, hint }: { legend: string; name: string; value: T; options: { value: T; label: string; hint?: string }[]; onChange: (v: T) => void; hint?: string }) {
@@ -96,7 +97,7 @@ export function SettingsView() {
         ]}
       />
 
-      <Toggle label="Prefer seated versions" hint="For chair or wheelchair users: when an exercise has a seated version, it is used first." checked={s.preferSeated} onChange={(v) => set({ preferSeated: v })} />
+      <Toggle label={t("settings.chair")} hint={t("settings.chairHint")} checked={s.chairUser} onChange={(v) => set({ chairUser: v })} />
       <Toggle label="Spoken cues" hint="Says the exercise and your target when the timer starts. Mixes with your music instead of stopping it." checked={s.spokenCues} onChange={(v) => set({ spokenCues: v })} />
 
       <section aria-labelledby="data-h" className="card p-5">

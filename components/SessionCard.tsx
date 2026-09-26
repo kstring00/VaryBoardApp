@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { BoardMap } from "@/components/BoardMap";
 import { ArrowIcon } from "@/components/app/icons";
+import { t } from "@/lib/copy";
 import { exerciseCount, sessionMinutes } from "@/lib/program";
 import type { PatientProgram, PlanSession } from "@/lib/types";
 
@@ -28,10 +29,13 @@ export function SessionCard({ program, session, photo, resume }: { program: Pati
         <p className="mt-2 max-w-[62%] text-lg font-medium">
           {sessionMinutes(session)} min • {exerciseCount(session)}
         </p>
-        <p className="mt-1 max-w-[62%] text-muted">{resume ? `Exercise ${resume.index + 1} of ${resume.total} is next.` : program.isStarter ? "Starter plan from Dr. Eric" : "Assigned by your therapist"}</p>
+        <p className="mt-1 max-w-[62%] text-muted">
+          {resume ? `Exercise ${resume.index + 1} of ${resume.total} is next.` : program.isStarter ? "Starter plan from Dr. Eric" : program.assignedBy ? t("today.assignedBy", { name: program.assignedBy }) : "Assigned by your therapist"}
+        </p>
         <Link href={`/app/session?s=${session.id}`} className="btn btn-primary mt-6 w-full">
           {resume ? "Resume session" : "Start session"} <ArrowIcon />
         </Link>
+        {!program.isStarter && <p className="mt-3 text-center text-sm text-muted">{t("today.therapistSees")}</p>}
       </div>
     </section>
   );

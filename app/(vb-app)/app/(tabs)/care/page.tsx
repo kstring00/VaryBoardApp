@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+import Link from "next/link";
+import { t } from "@/lib/copy";
 import { Suspense } from "react";
 import { CareView } from "@/components/app/CareView";
 import { EricCredit } from "@/components/app/EricCredit";
@@ -46,7 +48,10 @@ export default function CarePage() {
       </section>
 
       <p className="mt-6 text-sm text-muted">{disclaimer}</p>
-      <nav aria-label="Legal" className="mt-4 flex flex-wrap gap-x-5 gap-y-2 text-sm">
+      <nav aria-label="Legal" className="mt-4 flex flex-wrap gap-x-5 text-sm [&>a]:inline-flex [&>a]:min-h-12 [&>a]:items-center">
+        <Link href="/app/privacy" className="text-teal underline">
+          App privacy
+        </Link>
         <a href={brand.privacyUrl} className="text-teal underline">
           Privacy policy
         </a>
@@ -54,7 +59,7 @@ export default function CarePage() {
           Terms
         </a>
         <a href={brand.siteUrl} className="text-muted underline">
-          Shop
+          {t("care.shop")}
         </a>
       </nav>
       <p className="mt-3 text-sm text-muted">

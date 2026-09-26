@@ -30,20 +30,20 @@ const STOP = "Stop if you feel sharp pain, and check with your therapist.";
 const BAND = "Before each set, check the band for nicks or tears and make sure the carabiner is closed on the anchor.";
 const ANCHOR = "Check the anchor is seated in the hexagon before you pull.";
 
-function m(n: number, genreSlug: GenreSlug, name: string, slug: string, f: Omit<Movement, "id" | "genreSlug" | "name" | "slug" | "videoUrl" | "posterUrl" | "reviewedByEric" | "reviewedAt">): Movement {
-  return { id: id(n), genreSlug, name, slug, videoUrl: null, posterUrl: null, reviewedByEric: false, reviewedAt: null, ...f };
+function m(n: number, genreSlug: GenreSlug, name: string, slug: string, f: Omit<Movement, "id" | "genreSlug" | "name" | "slug" | "videoUrl" | "posterUrl" | "reviewedByEric" | "reviewedAt" | "easierAlternativeId"> & { easierAlternativeId?: string | null }): Movement {
+  return { id: id(n), genreSlug, name, slug, videoUrl: null, posterUrl: null, reviewedByEric: false, reviewedAt: null, easierAlternativeId: null, ...f };
 }
 
 export const MOVEMENTS: Movement[] = [
   m(1, "climb", "[DRAFT] Climb — standing wall climb", "draft-climb-standing-wall-climb", {
     level: 2, boardModels: ["vb", "xt"], needsBand: false, needsHandrail: false, needsChair: false,
-    defaultAnchor: a(3, 6, 2), seatedAlternativeId: id(3),
+    defaultAnchor: a(3, 6, 2), seatedAlternativeId: id(3), easierAlternativeId: id(9),
     cues: ["Stand facing the board, feet hip-width apart.", "Walk your fingers up one hexagon at a time toward the marked hexagon.", "Pause where it feels like a comfortable reach, then walk back down."],
     safetyNote: `Move slowly and stay within a comfortable range. ${STOP}`, defaultSets: 2, defaultReps: 10, defaultHoldSeconds: 5,
   }),
   m(2, "climb", "[DRAFT] Climb — side wall walk", "draft-climb-side-wall-walk", {
     level: 2, boardModels: ["vb", "xt"], needsBand: false, needsHandrail: false, needsChair: false,
-    defaultAnchor: a(3, 2, 1), seatedAlternativeId: id(3),
+    defaultAnchor: a(3, 2, 1), seatedAlternativeId: id(3), easierAlternativeId: id(9),
     cues: ["Stand side-on to the board, an arm's length away.", "Walk the fingers of the near hand up the hexagons.", "Pause at the marked hexagon or lower, then walk back down and turn around."],
     safetyNote: `Keep your shoulders relaxed. ${STOP}`, defaultSets: 2, defaultReps: 8, defaultHoldSeconds: 5,
   }),
@@ -73,7 +73,7 @@ export const MOVEMENTS: Movement[] = [
   }),
   m(7, "steady", "[DRAFT] Steady — heel-to-toe stand", "draft-steady-heel-to-toe-stand", {
     level: 1, boardModels: ["vb", "xt"], needsBand: false, needsHandrail: true, needsChair: false,
-    defaultAnchor: a(2, 8, 2), seatedAlternativeId: null,
+    defaultAnchor: a(2, 8, 2), seatedAlternativeId: null, easierAlternativeId: id(10),
     cues: ["Hold both rails.", "Place one foot directly in front of the other.", "Hold, then switch feet. Lighten your grip only when you feel ready."],
     safetyNote: `Keep both hands on the rails until your therapist says otherwise. Check the rails are firmly attached before you start. ${STOP}`, defaultSets: 3, defaultReps: null, defaultHoldSeconds: 20,
   }),
@@ -82,6 +82,18 @@ export const MOVEMENTS: Movement[] = [
     defaultAnchor: a(2, 4, 2), seatedAlternativeId: null,
     cues: ["Set a sturdy chair in front of the board.", "Hold the rails, lean forward slightly and stand up slowly.", "Sit back down with control."],
     safetyNote: `Use a chair that will not slide, and check the rails are firmly attached. ${STOP}`, defaultSets: 2, defaultReps: 8, defaultHoldSeconds: null,
+  }),
+  m(9, "climb", "[DRAFT] Climb — low wall walk", "draft-climb-low-wall-walk", {
+    level: 1, boardModels: ["vb", "xt"], needsBand: false, needsHandrail: false, needsChair: false,
+    defaultAnchor: a(2, 16, 2), seatedAlternativeId: id(3),
+    cues: ["Stand facing the board, feet hip-width apart.", "Walk your fingers up to chest height, one hexagon at a time.", "Walk them back down slowly."],
+    safetyNote: `Move slowly and stay within a comfortable range. ${STOP}`, defaultSets: 2, defaultReps: 8, defaultHoldSeconds: 3,
+  }),
+  m(10, "steady", "[DRAFT] Steady — feet-together stand", "draft-steady-feet-together-stand", {
+    level: 1, boardModels: ["vb", "xt"], needsBand: false, needsHandrail: true, needsChair: false,
+    defaultAnchor: a(2, 8, 2), seatedAlternativeId: null,
+    cues: ["Hold both rails.", "Bring your feet together and stand tall.", "Hold, breathing slowly."],
+    safetyNote: `Keep both hands on the rails. Check the rails are firmly attached before you start. ${STOP}`, defaultSets: 3, defaultReps: null, defaultHoldSeconds: 20,
   }),
 ];
 
@@ -106,6 +118,7 @@ export interface SeedProgram {
   clinicianId: string | null;
   clinicName: string | null;
   clinicPhone: string | null;
+  therapistNote: string | null;
   daysPerWeek: number;
   /** Starter programs only: production shows them once Eric has reviewed them. */
   reviewedByEric: boolean;
@@ -130,6 +143,7 @@ export const STARTER_PROGRAMS: SeedProgram[] = [
     clinicianId: null,
     clinicName: null,
     clinicPhone: null,
+    therapistNote: null,
     daysPerWeek: 3,
     reviewedByEric: false,
     sessions: [{ id: "21000000-0000-4000-8000-000000000001", name: "[DRAFT] Shoulder mobility", estMinutes: 15, blocks: withIds("30000000-0000-4000-8000-00000001", shoulderBlocks) }],
@@ -155,6 +169,7 @@ export const TEST_PROGRAMS: SeedProgram[] = [
     clinicianId: TEST_CLINICIAN.id,
     clinicName: TEST_CLINICIAN.clinicName,
     clinicPhone: "555-0100",
+    therapistNote: "Keep the band light this week. Slow and steady beats fast.",
     daysPerWeek: 4,
     reviewedByEric: false,
     sessions: [

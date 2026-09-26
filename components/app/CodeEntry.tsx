@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { CodeInput } from "@/components/CodeInput";
-import { setProgram } from "@/lib/client/store";
+import { getHabit, setProgram } from "@/lib/client/store";
 import type { PatientProgram } from "@/lib/types";
 
 type State = { kind: "idle" } | { kind: "checking" } | { kind: "found"; program: PatientProgram } | { kind: "error"; message: string };
@@ -52,7 +52,7 @@ export function CodeEntry({ submitLabel = "Find my plan" }: { submitLabel?: stri
           className="btn btn-primary mt-5 w-full"
           onClick={() => {
             setProgram(p);
-            router.push("/app/plan");
+            router.push(getHabit()?.programCode === p.code ? "/app/plan" : "/app/start");
           }}
         >
           Use this plan

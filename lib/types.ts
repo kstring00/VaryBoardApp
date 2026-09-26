@@ -37,6 +37,8 @@ export interface Movement {
   defaultAnchor: AnchorCell | null;
   /** A chair-based version for people who use a chair or wheelchair. */
   seatedAlternativeId: string | null;
+  /** What "Make it easier" swaps in, in place. */
+  easierAlternativeId: string | null;
   videoUrl: string | null;
   posterUrl: string | null;
   cues: string[];
@@ -63,8 +65,9 @@ export interface SessionBlock {
 
 export interface PlanBlock extends SessionBlock {
   movement: Movement;
-  /** Embedded so the swap works offline. Null when there is none (or it is gated out). */
+  /** Embedded so the swaps work offline. Null when there is none (or it is gated out). */
   seatedAlternative: Movement | null;
+  easierAlternative: Movement | null;
 }
 
 export interface PlanSession {
@@ -82,9 +85,16 @@ export interface PatientProgram {
   isStarter: boolean;
   clinicName: string | null;
   clinicPhone: string | null;
+  /** The clinician's display name ("Assigned by ..."). Null for starter plans. */
+  assignedBy: string | null;
+  /** Short note from the therapist, shown under the session card. */
+  therapistNote: string | null;
+  noteUpdatedAt: string | null;
   daysPerWeek: number;
   sessions: PlanSession[];
 }
+
+export type ExerciseEventKind = "done" | "skipped" | "made_easier";
 
 /** 1 easier, 2 same, 3 harder. */
 export type Feel = 1 | 2 | 3;

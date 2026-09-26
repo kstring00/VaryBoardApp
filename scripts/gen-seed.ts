@@ -19,7 +19,7 @@ const movementId = (slug: string) => {
 
 function programSql(p: SeedProgram): string[] {
   const out = [
-    `insert into public.programs (id, clinician_id, code, name, clinic_name, clinic_phone, days_per_week, reviewed_by_eric) values (${q(p.id)}, ${q(p.clinicianId)}, ${q(p.code)}, ${q(p.name)}, ${q(p.clinicName)}, ${q(p.clinicPhone)}, ${p.daysPerWeek}, ${p.reviewedByEric}) on conflict (id) do nothing;`,
+    `insert into public.programs (id, clinician_id, code, name, clinic_name, clinic_phone, therapist_note, days_per_week, reviewed_by_eric) values (${q(p.id)}, ${q(p.clinicianId)}, ${q(p.code)}, ${q(p.name)}, ${q(p.clinicName)}, ${q(p.clinicPhone)}, ${q(p.therapistNote)}, ${p.daysPerWeek}, ${p.reviewedByEric}) on conflict (id) do nothing;`,
   ];
   p.sessions.forEach((s, si) => {
     out.push(`insert into public.program_sessions (id, program_id, name, sort, est_minutes) values (${q(s.id)}, ${q(p.id)}, ${q(s.name)}, ${si + 1}, ${s.estMinutes}) on conflict (id) do nothing;`);
@@ -47,8 +47,10 @@ const seed: string[] = [
     return `  (${q(m.id)}, ${q(g.id)}, ${q(m.name)}, ${q(m.slug)}, ${m.level}, ${arr(m.boardModels)}, ${m.needsBand}, ${m.needsHandrail}, ${m.needsChair}, ${j(m.defaultAnchor)}, ${q(m.videoUrl)}, ${q(m.posterUrl)}, ${arr(m.cues)}, ${q(m.safetyNote)}, ${n(m.defaultSets)}, ${n(m.defaultReps)}, ${n(m.defaultHoldSeconds)}, ${m.reviewedByEric})`;
   }).join(",\n") + "\non conflict (id) do nothing;",
   "",
-  "-- Seated alternatives (set after every movement exists).",
-  ...MOVEMENTS.filter((m) => m.seatedAlternativeId).map((m) => `update public.movements set seated_alternative_id = ${q(m.seatedAlternativeId)} where id = ${q(m.id)};`),
+  "-- Seated and easier alternatives (set after every movement exists).",
+  ...MOVEMENTS.filter((m) => m.seatedAlternativeId || m.easierAlternativeId).map(
+    (m) => `update public.movements set seated_alternative_id = ${q(m.seatedAlternativeId)}, easier_alternative_id = ${q(m.easierAlternativeId)} where id = ${q(m.id)};`,
+  ),
   "",
   ...STARTER_PROGRAMS.flatMap(programSql),
   "",

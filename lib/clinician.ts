@@ -6,7 +6,7 @@ import { demo } from "@/lib/demo/store";
 import { demoBackend, hasSupabase } from "@/lib/env";
 import { fromRpc, type RpcProgram } from "@/lib/program-shape";
 import { serverSupabase } from "@/lib/supabase/server";
-import type { AnchorCell, PatientProgram } from "@/lib/types";
+import type { AnchorCell, ExerciseEventKind, PatientProgram } from "@/lib/types";
 
 /**
  * Clinician data. Supabase (magic-link auth, RLS: a clinician only ever sees their own rows) or,
@@ -119,7 +119,7 @@ export async function getOwnProgram(c: Clinician, code: string): Promise<OwnProg
   const sb = (await serverSupabase())!;
   const { data } = await sb
     .from("programs")
-    .select("code, name, clinic_name, clinic_phone, days_per_week, archived, created_at, reviewed_by_eric, program_sessions(id, name, sort, est_minutes, session_blocks(id, movement_id, sort, sets, reps, hold_seconds, band_color, anchor))")
+    .select("code, name, clinic_name, clinic_phone, therapist_note, note_updated_at, days_per_week, archived, created_at, reviewed_by_eric, program_sessions(id, name, sort, est_minutes, session_blocks(id, movement_id, sort, sets, reps, hold_seconds, band_color, anchor))")
     .eq("code", code)
     .eq("clinician_id", c.id)
     .maybeSingle();
@@ -131,6 +131,9 @@ export async function getOwnProgram(c: Clinician, code: string): Promise<OwnProg
     name: data.name,
     clinic_name: data.clinic_name,
     clinic_phone: data.clinic_phone,
+    assigned_by: c.displayName,
+    therapist_note: data.therapist_note,
+    note_updated_at: data.note_updated_at,
     reviewed_by_eric: data.reviewed_by_eric,
     days_per_week: data.days_per_week,
     sessions: (data.program_sessions as S[])
@@ -145,31 +148,44 @@ export interface AdherenceCompletion {
   programSessionId: string;
   completedAt: string;
   feel: number | null;
-  items: { sessionBlockId: string; done: boolean; eased: boolean; seated: boolean }[];
+}
+
+export interface AdherenceEvent {
+  sessionBlockId: string;
+  event: ExerciseEventKind;
+  occurredAt: string;
 }
 
 export async function getCompletions(c: Clinician, code: string): Promise<AdherenceCompletion[]> {
-  if (c.mode === "demo") return demo.completions(c.id, code).map((x) => ({ id: x.id, programSessionId: x.programSessionId, completedAt: x.completedAt, feel: x.feel, items: x.items }));
+  if (c.mode === "demo") return demo.completions(c.id, code).map((x) => ({ id: x.id, programSessionId: x.programSessionId, completedAt: x.completedAt, feel: x.feel }));
   const sb = (await serverSupabase())!;
-  const { data, error } = await sb
-    .from("completions")
-    .select("id, program_session_id, completed_at, feel, completion_items(session_block_id, done, eased, seated)")
-    .eq("program_code", code)
-    .order("completed_at");
+  const { data, error } = await sb.from("completions").select("id, program_session_id, completed_at, feel").eq("program_code", code).order("completed_at");
   if (error || !data) throw new Error(`Could not load sessions: ${error?.message}`);
-  return data.map((r) => ({
-    id: r.id,
-    programSessionId: r.program_session_id,
-    completedAt: r.completed_at,
-    feel: r.feel,
-    items: (r.completion_items as { session_block_id: string; done: boolean; eased: boolean; seated: boolean }[]).map((i) => ({ sessionBlockId: i.session_block_id, done: i.done, eased: i.eased, seated: i.seated })),
-  }));
+  return data.map((r) => ({ id: r.id, programSessionId: r.program_session_id, completedAt: r.completed_at, feel: r.feel }));
+}
+
+/** Exercise events for a code (RLS: only the owning clinician can read them). Last 60 days. */
+export async function getEvents(c: Clinician, code: string): Promise<AdherenceEvent[]> {
+  const since = new Date(Date.now() - 60 * 864e5).toISOString();
+  if (c.mode === "demo") return demo.events(c.id, code).filter((e) => e.occurredAt >= since).map((e) => ({ sessionBlockId: e.sessionBlockId, event: e.event, occurredAt: e.occurredAt }));
+  const sb = (await serverSupabase())!;
+  const { data, error } = await sb.from("exercise_events").select("session_block_id, event, occurred_at").eq("program_code", code).gte("occurred_at", since).order("occurred_at");
+  if (error || !data) throw new Error(`Could not load exercise events: ${error?.message}`);
+  return data.map((r) => ({ sessionBlockId: r.session_block_id, event: r.event as ExerciseEventKind, occurredAt: r.occurred_at }));
+}
+
+export async function updateNote(c: Clinician, code: string, note: string | null): Promise<boolean> {
+  if (c.mode === "demo") return demo.setNote(c.id, code, note);
+  const sb = (await serverSupabase())!;
+  const { error, count } = await sb.from("programs").update({ therapist_note: note }, { count: "exact" }).eq("code", code).eq("clinician_id", c.id);
+  return !error && (count ?? 0) > 0;
 }
 
 export interface NewProgram {
   name: string;
   clinicName: string | null;
   clinicPhone: string | null;
+  therapistNote: string | null;
   daysPerWeek: number;
   sessions: { name: string; estMinutes: number | null; blocks: { movementId: string; sets: number | null; reps: number | null; holdSeconds: number | null; bandColor: string | null; anchor: AnchorCell | null }[] }[];
 }
@@ -182,6 +198,7 @@ export async function createProgram(c: Clinician, p: NewProgram): Promise<{ code
     p_clinic_name: p.clinicName,
     p_clinic_phone: p.clinicPhone,
     p_days_per_week: p.daysPerWeek,
+    p_therapist_note: p.therapistNote,
     p_sessions: p.sessions.map((s) => ({
       name: s.name,
       est_minutes: s.estMinutes,

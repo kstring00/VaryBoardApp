@@ -6,8 +6,9 @@ import { AnchorPicker } from "@/components/AnchorPicker";
 import { createProgramAction } from "@/app/(vb-app)/app/clinician/actions";
 import { phiWarning } from "@/content/site";
 import { GENRE_NAMES } from "@/lib/genres";
-import { LABEL_MAX, labelProblem, phoneProblem } from "@/lib/labels";
-import { prescription, sessionMinutes } from "@/lib/program";
+import { t } from "@/lib/copy";
+import { LABEL_MAX, NOTE_MAX, labelProblem, noteProblem, phoneProblem } from "@/lib/labels";
+import { LONG_SESSION_MINUTES, MAX_EXERCISES, WARN_EXERCISES, estimateSeconds, prescription } from "@/lib/program";
 import type { AnchorCell, Genre, GenreSlug, Movement, PatientProgram } from "@/lib/types";
 
 interface BlockDraft {
@@ -60,6 +61,7 @@ export function ProgramBuilder({
   const [clinic, setClinic] = useState(initial?.clinicName ?? clinicName ?? "");
   const [phone, setPhone] = useState(initial?.clinicPhone ?? "");
   const [days, setDays] = useState(String(initial?.daysPerWeek ?? 3));
+  const [note, setNote] = useState(initial && !initial.isStarter ? initial.therapistNote ?? "" : "");
   const [sessions, setSessions] = useState<SessionDraft[]>(() =>
     initial
       ? initial.sessions.map((s) => ({
@@ -92,9 +94,10 @@ export function ProgramBuilder({
   const nameErr = labelProblem(name, LABEL_MAX.program);
   const clinicErr = clinic.trim() ? labelProblem(clinic, LABEL_MAX.clinic) : null;
   const phoneErr = phoneProblem(phone);
-  const sessionErrs = sessions.map((s) => labelProblem(s.name, LABEL_MAX.session) ?? (s.blocks.length === 0 ? "Add at least one exercise." : null));
+  const noteErr = noteProblem(note);
+  const sessionErrs = sessions.map((s) => labelProblem(s.name, LABEL_MAX.session) ?? (s.blocks.length === 0 ? "Add at least one exercise." : s.blocks.length > MAX_EXERCISES ? t("builder.max") : null));
   const blockErr = (b: BlockDraft) => (!b.reps.trim() && !b.holdSeconds.trim() ? "Set reps, a hold, or both." : null);
-  const valid = !nameErr && !clinicErr && !phoneErr && sessionErrs.every((e) => !e) && sessions.every((s) => s.blocks.every((b) => !blockErr(b)));
+  const valid = !nameErr && !clinicErr && !phoneErr && !noteErr && sessionErrs.every((e) => !e) && sessions.every((s) => s.blocks.every((b) => !blockErr(b)));
   const totalExercises = sessions.reduce((n, s) => n + s.blocks.length, 0);
 
   const submit = async () => {
@@ -109,6 +112,7 @@ export function ProgramBuilder({
       name: name.trim(),
       clinicName: clinic.trim() || null,
       clinicPhone: phone.trim() || null,
+      therapistNote: note.trim() || null,
       daysPerWeek: Number(days),
       sessions: sessions.map((s) => ({
         name: s.name.trim(),
@@ -170,6 +174,19 @@ export function ProgramBuilder({
             {err(phoneErr)}
           </label>
         </div>
+        <div className="grid gap-3 sm:grid-cols-[1fr_14rem]">
+          <label className="block">
+            <span className="label">Note to your patient (optional)</span>
+            <textarea className="field min-h-24" rows={3} maxLength={NOTE_MAX} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Keep the band light this week." aria-describedby="builder-note-warning" />
+            <span className="mt-1 block text-sm text-muted">
+              {note.length}/{NOTE_MAX}
+            </span>
+            {err(noteErr)}
+          </label>
+          <p id="builder-note-warning" role="note" className="rounded-xl bg-warn-bg p-3 text-sm font-semibold text-warn-ink">
+            {t("note.helper")}
+          </p>
+        </div>
         <label className="block">
           <span className="label">Sessions a week</span>
           <select className="field" value={days} onChange={(e) => setDays(e.target.value)}>
@@ -204,7 +221,7 @@ export function ProgramBuilder({
                 className="field"
                 inputMode="numeric"
                 value={s.estMinutes}
-                placeholder={String(sessionMinutes({ id: "", name: "", sort: 0, estMinutes: null, blocks: s.blocks.map((b) => ({ ...b, id: b.key, sort: 0, sets: num(b.sets), reps: num(b.reps), holdSeconds: num(b.holdSeconds), bandColor: null, movement: byId.get(b.movementId)!, seatedAlternative: null })) }))}
+                placeholder={String(Math.max(1, Math.ceil(estimateSeconds(s.blocks.map((b) => ({ sets: num(b.sets), reps: num(b.reps), holdSeconds: num(b.holdSeconds) }))) / 60)))}
                 onChange={(e) => patchSession(s.key, (x) => ({ ...x, estMinutes: e.target.value.replace(/[^0-9]/g, "").slice(0, 3) }))}
               />
             </label>
@@ -280,6 +297,25 @@ export function ProgramBuilder({
             })}
           </ol>
 
+          {(() => {
+            const minutes = Math.ceil(estimateSeconds(s.blocks.map((b) => ({ sets: num(b.sets), reps: num(b.reps), holdSeconds: num(b.holdSeconds) }))) / 60);
+            const shown = num(s.estMinutes) ?? minutes;
+            return (
+              <div className="mt-3 space-y-2" aria-live="polite">
+                <p className={`text-sm font-semibold ${shown > LONG_SESSION_MINUTES ? "rounded-lg bg-warn-bg p-2 text-warn-ink" : "text-muted"}`} data-testid="session-minutes">
+                  About {shown} min · {s.blocks.length} of {MAX_EXERCISES} exercises
+                  {shown > LONG_SESSION_MINUTES ? `. ${t("builder.overTime")}` : ""}
+                </p>
+                {s.blocks.length >= WARN_EXERCISES && s.blocks.length < MAX_EXERCISES && <p className="rounded-lg bg-warn-bg p-2 text-sm text-warn-ink">{t("builder.warnLong")}</p>}
+                {s.blocks.length >= MAX_EXERCISES && (
+                  <p role="status" className="rounded-lg bg-warn-bg p-2 text-sm font-semibold text-warn-ink">
+                    {t("builder.max")}
+                  </p>
+                )}
+              </div>
+            );
+          })()}
+
           {picker === s.key ? (
             <div className="mt-4 rounded-xl border-2 border-teal p-3">
               <div className="flex items-center justify-between">
@@ -310,7 +346,13 @@ export function ProgramBuilder({
                         {m.seatedAlternativeId ? " · has a seated version" : ""}
                       </span>
                     </span>
-                    <button type="button" className="btn btn-secondary min-h-12 px-4 text-base" onClick={() => patchSession(s.key, (x) => ({ ...x, blocks: [...x.blocks, blockFrom(m)] }))}>
+                    <button
+                      type="button"
+                      className="btn btn-secondary min-h-12 px-4 text-base"
+                      disabled={s.blocks.length >= MAX_EXERCISES}
+                      aria-label={`Add ${m.name}`}
+                      onClick={() => patchSession(s.key, (x) => (x.blocks.length >= MAX_EXERCISES ? x : { ...x, blocks: [...x.blocks, blockFrom(m)] }))}
+                    >
                       Add
                     </button>
                   </li>
@@ -318,7 +360,7 @@ export function ProgramBuilder({
               </ul>
             </div>
           ) : (
-            <button type="button" className="btn btn-secondary mt-4 w-full" onClick={() => setPicker(s.key)}>
+            <button type="button" className="btn btn-secondary mt-4 w-full" onClick={() => setPicker(s.key)} disabled={s.blocks.length >= MAX_EXERCISES}>
               Add exercise
             </button>
           )}
