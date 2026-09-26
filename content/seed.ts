@@ -148,6 +148,80 @@ export const STARTER_PROGRAMS: SeedProgram[] = [
     reviewedByEric: false,
     sessions: [{ id: "21000000-0000-4000-8000-000000000001", name: "[DRAFT] Shoulder mobility", estMinutes: 15, blocks: withIds("30000000-0000-4000-8000-00000001", shoulderBlocks) }],
   },
+  {
+    id: "20000000-0000-4000-8000-000000000002",
+    code: "START2",
+    name: "[DRAFT] Start here: your first weeks on the board",
+    clinicianId: null,
+    clinicName: null,
+    clinicPhone: null,
+    therapistNote: null,
+    daysPerWeek: 3,
+    reviewedByEric: false,
+    sessions: [
+      {
+        id: "21000000-0000-4000-8000-000000000002",
+        name: "[DRAFT] Day A: Reach",
+        estMinutes: 8,
+        blocks: withIds("30000000-0000-4000-8000-00000002", [
+          { movementSlug: "draft-climb-low-wall-walk", sets: 2, reps: 8, holdSeconds: 3, bandColor: null, anchor: null },
+          { movementSlug: "draft-climb-standing-wall-climb", sets: 2, reps: 8, holdSeconds: 5, bandColor: null, anchor: null },
+          { movementSlug: "draft-stretch-overhead-band-reach", sets: 2, reps: null, holdSeconds: 20, bandColor: null, anchor: null },
+        ]),
+      },
+      {
+        id: "21000000-0000-4000-8000-000000000003",
+        name: "[DRAFT] Day B: Strength",
+        estMinutes: 8,
+        blocks: withIds("30000000-0000-4000-8000-00000003", [
+          { movementSlug: "draft-strengthen-standing-band-row", sets: 2, reps: 10, holdSeconds: null, bandColor: null, anchor: null },
+          { movementSlug: "draft-rise-sit-to-stand-with-the-rails", sets: 2, reps: 8, holdSeconds: null, bandColor: null, anchor: null },
+          { movementSlug: "draft-climb-side-wall-walk", sets: 2, reps: 8, holdSeconds: 3, bandColor: null, anchor: null },
+        ]),
+      },
+      {
+        id: "21000000-0000-4000-8000-000000000004",
+        name: "[DRAFT] Day C: Steady",
+        estMinutes: 8,
+        blocks: withIds("30000000-0000-4000-8000-00000004", [
+          { movementSlug: "draft-steady-feet-together-stand", sets: 3, reps: null, holdSeconds: 20, bandColor: null, anchor: null },
+          { movementSlug: "draft-steady-heel-to-toe-stand", sets: 3, reps: null, holdSeconds: 20, bandColor: null, anchor: null },
+          { movementSlug: "draft-rise-sit-to-stand-with-the-rails", sets: 2, reps: 8, holdSeconds: null, bandColor: null, anchor: null },
+        ]),
+      },
+    ],
+  },
+  {
+    id: "20000000-0000-4000-8000-000000000003",
+    code: "START3",
+    name: "[DRAFT] Seated plan",
+    clinicianId: null,
+    clinicName: null,
+    clinicPhone: null,
+    therapistNote: null,
+    daysPerWeek: 3,
+    reviewedByEric: false,
+    sessions: [
+      {
+        id: "21000000-0000-4000-8000-000000000005",
+        name: "[DRAFT] Seated reach",
+        estMinutes: 6,
+        blocks: withIds("30000000-0000-4000-8000-00000005", [
+          { movementSlug: "draft-climb-seated-wall-walk", sets: 2, reps: 8, holdSeconds: 3, bandColor: null, anchor: null },
+          { movementSlug: "draft-stretch-overhead-band-reach", sets: 2, reps: null, holdSeconds: 20, bandColor: null, anchor: null },
+        ]),
+      },
+      {
+        id: "21000000-0000-4000-8000-000000000006",
+        name: "[DRAFT] Seated strength",
+        estMinutes: 6,
+        blocks: withIds("30000000-0000-4000-8000-00000006", [
+          { movementSlug: "draft-strengthen-seated-band-row", sets: 2, reps: 10, holdSeconds: null, bandColor: null, anchor: null },
+          { movementSlug: "draft-climb-seated-wall-walk", sets: 2, reps: 8, holdSeconds: 3, bandColor: null, anchor: null },
+        ]),
+      },
+    ],
+  },
 ];
 
 /**

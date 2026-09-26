@@ -13,18 +13,20 @@ import { ArrowIcon, CheckIcon } from "@/components/app/icons";
 import { describePattern } from "@/lib/board/geometry";
 import {
   addCompletion,
-  getActive,
   getCompletions,
+  PLAN_SLOT,
   prefersReducedMotion,
-  setActive,
   useActive,
+  useActiveWorkout,
   useCompletions,
   useProgram,
   useSettings,
   uuid,
+  WORKOUT_SLOT,
   type ActiveSession,
   type LocalCompletion,
   type LocalItem,
+  type SessionSlot,
 } from "@/lib/client/store";
 import { flushEvents, logEvent } from "@/lib/client/events";
 import { queueCompletion } from "@/lib/client/submit";
@@ -50,18 +52,30 @@ function newActive(program: PatientProgram, session: PlanSession): ActiveSession
   };
 }
 
-/** Saves the session on the device (always) and queues it for the server. */
-function saveCompletion(a: ActiveSession, feel: Feel | null): LocalCompletion {
+/**
+ * Saves the session on the device (always). Plan sessions are queued for the server; a
+ * self-guided workout stays on the device (there is no clinic to send it to).
+ */
+function saveCompletion(a: ActiveSession, feel: Feel | null, workout: boolean): LocalCompletion {
   const items = a.queue.map((id) => a.items[id]).filter((i): i is LocalItem => !!i);
-  const c: LocalCompletion = { id: uuid(), programCode: a.programCode, programSessionId: a.programSessionId, sessionName: a.sessionName, startedAt: a.startedAt, completedAt: new Date().toISOString(), feel, items };
+  const c: LocalCompletion = { id: uuid(), programCode: a.programCode, programSessionId: a.programSessionId, sessionName: a.sessionName, startedAt: a.startedAt, completedAt: new Date().toISOString(), feel, items, ...(workout ? { kind: "workout" as const } : {}) };
   addCompletion(c);
-  queueCompletion(c);
+  if (!workout) queueCompletion(c);
   return c;
 }
 
-export function SessionPlayer({ photo }: { photo: string | null }) {
-  const program = useProgram();
-  const active = useActive();
+/**
+ * The player. With `workout`, it runs a self-guided workout in its own slot (a plan session in
+ * progress is left untouched) and nothing is sent to a clinic.
+ */
+export function SessionPlayer({ photo, workout }: { photo: string | null; workout?: PatientProgram }) {
+  const planProgram = useProgram();
+  const planActive = useActive();
+  const workoutActive = useActiveWorkout();
+  const isWorkout = !!workout;
+  const program = isWorkout ? workout : planProgram;
+  const active = isWorkout ? workoutActive : planActive;
+  const slot = isWorkout ? WORKOUT_SLOT : PLAN_SLOT;
   const params = useSearchParams();
   const requested = params.get("s");
   const [dismissed, setDismissed] = useState(false);
@@ -69,10 +83,10 @@ export function SessionPlayer({ photo }: { photo: string | null }) {
   // Start a session once the stored plan is available, unless one is already in progress.
   useEffect(() => {
     if (!program) return;
-    const current = getActive();
+    const current = slot.get();
     if (current && current.programCode === program.code && current.phase !== "done") return; // resume (or ask, below)
     const target = program.sessions.find((s) => s.id === requested) ?? nextSession(program, getCompletions());
-    setActive(newActive(program, target));
+    slot.set(newActive(program, target));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [program?.code, requested]);
 
@@ -106,8 +120,8 @@ export function SessionPlayer({ photo }: { photo: string | null }) {
             type="button"
             className="btn btn-quiet mt-2 w-full"
             onClick={() => {
-              saveCompletion(active, null); // keep what was done
-              setActive(newActive(program, target));
+              saveCompletion(active, null, isWorkout); // keep what was done
+              slot.set(newActive(program, target));
               setDismissed(true);
             }}
           >
@@ -119,11 +133,11 @@ export function SessionPlayer({ photo }: { photo: string | null }) {
   }
   if (!active || active.programCode !== program.code) return <main className="min-h-dvh" aria-busy="true" />;
   const session = program.sessions.find((s) => s.id === active.programSessionId);
-  if (!session) return <MissingSession />;
-  return <Player program={program} session={session} active={active} photo={photo} />;
+  if (!session) return <MissingSession slot={slot} />;
+  return <Player program={program} session={session} active={active} photo={photo} slot={slot} isWorkout={isWorkout} />;
 }
 
-function Player({ program, session, active, photo }: { program: PatientProgram; session: PlanSession; active: ActiveSession; photo: string | null }) {
+function Player({ program, session, active, photo, slot, isWorkout }: { program: PatientProgram; session: PlanSession; active: ActiveSession; photo: string | null; slot: SessionSlot; isWorkout: boolean }) {
   const router = useRouter();
   const settings = useSettings();
   const completions = useCompletions() ?? [];
@@ -142,7 +156,7 @@ function Player({ program, session, active, photo }: { program: PatientProgram; 
     window.scrollTo({ top: 0, behavior: prefersReducedMotion() ? "auto" : "smooth" });
   }, [active.phase, active.index]);
 
-  const update = (patch: Partial<ActiveSession>) => setActive({ ...active, ...patch });
+  const update = (patch: Partial<ActiveSession>) => slot.set({ ...active, ...patch });
   const itemFor = (b: PlanBlock): LocalItem =>
     active.items[b.id] ?? {
       id: uuid(),
@@ -162,16 +176,20 @@ function Player({ program, session, active, photo }: { program: PatientProgram; 
     const movement = movementFor(b, next);
     next.movementId = movement.id;
     next.movementName = movement.name;
-    setActive({ ...active, items: { ...active.items, [b.id]: next }, ...rest });
+    slot.set({ ...active, items: { ...active.items, [b.id]: next }, ...rest });
   };
   const advance = (items: Record<string, LocalItem>) => {
     const last = active.index + 1 >= total;
-    setActive({ ...active, items, index: last ? active.index : active.index + 1, phase: last ? "feel" : "setup", timer: undefined });
+    slot.set({ ...active, items, index: last ? active.index : active.index + 1, phase: last ? "feel" : "setup", timer: undefined });
     setTab("setup");
   };
   /** Done or skipped: saved on the device this instant (event queue), then the next exercise. */
+  /** Exercise events go to the clinic for plan sessions only. */
+  const log = (b: PlanBlock, e: "done" | "skipped" | "made_easier") => {
+    if (!isWorkout) void logEvent(active.programCode, b.id, e);
+  };
   const finishExercise = (b: PlanBlock, patch: Pick<LocalItem, "done" | "skipped">) => {
-    void logEvent(active.programCode, b.id, patch.done ? "done" : "skipped");
+    log(b, patch.done ? "done" : "skipped");
     advance({ ...active.items, [b.id]: { ...itemFor(b), ...patch } });
   };
   /**
@@ -186,7 +204,7 @@ function Player({ program, session, active, photo }: { program: PatientProgram; 
     else if (!it.doseEased) patch = { doseEased: true };
     else return;
     if (!it.easedLogged) {
-      void logEvent(active.programCode, b.id, "made_easier");
+      log(b, "made_easier");
       patch.easedLogged = true;
     }
     setItem(b, patch, { timer: undefined });
@@ -196,7 +214,7 @@ function Player({ program, session, active, photo }: { program: PatientProgram; 
     if (it.variant === "seated") return setItem(b, { variant: "plan" }, { timer: undefined });
     const patch: Partial<LocalItem> = { variant: "seated" };
     if (!it.easedLogged && !settings.chairUser) {
-      void logEvent(active.programCode, b.id, "made_easier");
+      log(b, "made_easier");
       patch.easedLogged = true;
     }
     setItem(b, patch, { timer: undefined });
@@ -205,7 +223,7 @@ function Player({ program, session, active, photo }: { program: PatientProgram; 
     const queue = [...active.queue];
     const [id] = queue.splice(active.index, 1);
     queue.push(id);
-    setActive({ ...active, queue, phase: "setup", timer: undefined });
+    slot.set({ ...active, queue, phase: "setup", timer: undefined });
     setTab("setup");
   };
 
@@ -295,7 +313,7 @@ function Player({ program, session, active, photo }: { program: PatientProgram; 
             panels={{
               setup: (
                 <div className="space-y-4">
-                  <p className="text-lg">Follow your therapist&rsquo;s setup — anchor position and resistance saved in your plan.</p>
+                  <p className="text-lg">{isWorkout ? t("workout.setup") : "Follow your therapist\u2019s setup — anchor position and resistance saved in your plan."}</p>
                   <ul className="space-y-2">
                     <li>
                       <span className="font-semibold">Exercise:</span> {mv.name}
@@ -307,7 +325,7 @@ function Player({ program, session, active, photo }: { program: PatientProgram; 
                     )}
                     {(mv.needsBand || block.bandColor) && (
                       <li>
-                        <span className="font-semibold">Band:</span> {block.bandColor ?? "the band your therapist chose"}
+                        <span className="font-semibold">Band:</span> {block.bandColor ?? (isWorkout ? t("workout.band") : "the band your therapist chose")}
                       </li>
                     )}
                     {mv.needsHandrail && <li>Handrails attached to the board.</li>}
@@ -373,8 +391,8 @@ function Player({ program, session, active, photo }: { program: PatientProgram; 
             spoken={settings.spokenCues}
             cue={spokenCue(mv.name, dose)}
             onStep={(i) => {
-              const a = getActive();
-              if (a) setActive({ ...a, timer: { blockId: block.id, step: i } });
+              const a = slot.get();
+              if (a) slot.set({ ...a, timer: { blockId: block.id, step: i } });
             }}
           />
         </div>
@@ -391,7 +409,7 @@ function Player({ program, session, active, photo }: { program: PatientProgram; 
           )}
           {(it.variant === "easier" || it.doseEased) && (
             <button type="button" className="btn btn-quiet w-full" onClick={() => setItem(block, { variant: settings.chairUser && block.seatedAlternative ? "seated" : "plan", doseEased: false }, { timer: undefined })}>
-              Back to my plan
+              {isWorkout ? "Back to the workout" : "Back to my plan"}
             </button>
           )}
         </div>
@@ -421,9 +439,9 @@ function Player({ program, session, active, photo }: { program: PatientProgram; 
   if (active.phase === "feel") {
     const skipped = active.queue.map((id) => active.items[id]).filter((i): i is LocalItem => !!i?.skipped);
     const save = (feel: Feel | null) => {
-      const c = saveCompletion(active, feel);
+      const c = saveCompletion(active, feel, isWorkout);
       setFreshDay(dayKey(new Date(c.completedAt)));
-      setActive({ ...active, phase: "done", completionId: c.id, timer: undefined });
+      slot.set({ ...active, phase: "done", completionId: c.id, timer: undefined });
     };
     return (
       <main className="mx-auto max-w-xl px-4 pb-16 pt-[max(env(safe-area-inset-top),8px)]">
@@ -432,7 +450,7 @@ function Player({ program, session, active, photo }: { program: PatientProgram; 
         <h1 ref={headingRef} tabIndex={-1} className="mt-1 text-4xl outline-none">
           How did movement feel?
         </h1>
-        <p className="mt-2 text-muted">Compared with last time. Your answer goes to your therapist with the session.</p>
+        <p className="mt-2 text-muted">{isWorkout ? t("workout.feelNote") : "Compared with last time. Your answer goes to your therapist with the session."}</p>
         {skipped.length > 0 && (
           <section className="card mt-5 p-4" aria-labelledby="skip-h">
             <h2 id="skip-h" className="font-sans text-lg font-semibold">
@@ -449,7 +467,7 @@ function Player({ program, session, active, photo }: { program: PatientProgram; 
                       type="button"
                       aria-pressed={i.skipReason === r}
                       className={`chip min-h-12 border-2 px-4 ${i.skipReason === r ? "border-teal bg-mint-wash" : "border-line bg-surface"}`}
-                      onClick={() => setActive({ ...active, items: { ...active.items, [i.blockId]: { ...i, skipReason: i.skipReason === r ? null : r } } })}
+                      onClick={() => slot.set({ ...active, items: { ...active.items, [i.blockId]: { ...i, skipReason: i.skipReason === r ? null : r } } })}
                     >
                       {r}
                     </button>
@@ -481,10 +499,11 @@ function Player({ program, session, active, photo }: { program: PatientProgram; 
         <path d="M38 66 l15 15 l30 -32" className="fill-none stroke-white" strokeWidth={8} strokeLinecap="round" strokeLinejoin="round" />
       </svg>
       <h1 ref={headingRef} tabIndex={-1} className="mt-6 text-4xl outline-none">
-        Session saved.
+        {isWorkout ? "Workout saved." : "Session saved."}
       </h1>
       <p className="mt-2 text-lg">
-        {done} of {total} exercises done. {count} of {program.daysPerWeek} sessions this week.
+        {done} of {total} exercises done.{" "}
+        {isWorkout ? `${count} ${count === 1 ? "session" : "sessions"} this week.` : `${count} of ${program.daysPerWeek} sessions this week.`}
       </p>
       <div className="mx-auto mt-6 max-w-sm">
         <HexWeekRow days={weekDots(completions)} fresh={freshDay ?? dayKey(new Date())} />
@@ -493,19 +512,28 @@ function Player({ program, session, active, photo }: { program: PatientProgram; 
         type="button"
         className="btn btn-primary mt-8 w-full"
         onClick={() => {
-          setActive(null);
+          slot.set(null);
           router.push("/app");
         }}
       >
         Back to Today
       </button>
+      {isWorkout && (
+        <Link
+          href="/app/workouts"
+          className="btn btn-quiet mt-2 w-full"
+          onClick={() => slot.set(null)}
+        >
+          More workouts
+        </Link>
+      )}
     </main>
   );
 }
 
 /** The plan changed under a saved session (the therapist edited it): start fresh. */
-function MissingSession() {
-  useEffect(() => setActive(null), []);
+function MissingSession({ slot }: { slot: SessionSlot }) {
+  useEffect(() => slot.set(null), [slot]);
   return <main className="min-h-dvh" aria-busy="true" />;
 }
 

@@ -29,7 +29,7 @@ export default async function StarterPage() {
       ) : (
         <ul className="mt-6 space-y-5">
           {plans.map((p) => (
-            <li key={p.code} className="card p-5">
+            <li key={p.code} id={p.code} className="card scroll-mt-6 p-5">
               <h2 className="text-2xl">{p.name}</h2>
               <p className="mt-1 text-muted">
                 {p.daysPerWeek} days a week · {p.sessions.map((s) => `${s.name}: ${sessionMinutes(s)} min, ${exerciseCount(s)}`).join("; ")}

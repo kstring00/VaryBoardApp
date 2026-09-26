@@ -37,6 +37,15 @@ dashboard, never in the repository.
 `Authorization: Bearer $CRON_SECRET`; anything else gets 401. It sends at most one reminder per
 device per day. Check it in Vercel → Project → Cron Jobs (logs show `{checked, sent, removed}`).
 
+## Vercel project settings
+
+`vercel.json` pins `"framework": "nextjs"`. The project was imported while `main` was empty, so
+Vercel had guessed "Other" and served a 404 for every page. If a deploy ever 404s at `/`, check
+Settings → Build and Deployment → Framework Preset is **Next.js**.
+
+Previews show drafts (under a banner); production hides them. Until Eric reviews movements and
+workouts, production shows no workouts, starter plans or movements: review on the preview URL.
+
 ## Launch blockers (in order)
 
 1. Eric reviews the movements (Supabase `movements.reviewed_by_eric`) and the app copy in

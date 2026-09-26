@@ -58,3 +58,9 @@ export const PhoneIcon = ({ className = "h-5 w-5" }: { className?: string }) => 
     <path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a1 1 0 0 1-1 1A16 16 0 0 1 4 5a1 1 0 0 1 1-1z" />
   </svg>
 );
+export const PlayHexIcon = ({ className = "h-6 w-6" }: { className?: string }) => (
+  <svg {...base} className={className}>
+    <path d="M12 2.5 20.5 7.3v9.4L12 21.5l-8.5-4.8V7.3z" />
+    <path d="M10 8.8v6.4l5.2-3.2z" />
+  </svg>
+);

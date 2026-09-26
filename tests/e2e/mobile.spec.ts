@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-const PATIENT = ["/app", "/app/plan", "/app/progress", "/app/care", "/app/settings", "/app/code", "/app/starter", "/app/library", "/app/library/climb", "/app/movement/draft-climb-standing-wall-climb", "/app/privacy", "/app/start", "/app/session"];
+const PATIENT = ["/app", "/app/plan", "/app/progress", "/app/care", "/app/settings", "/app/code", "/app/starter", "/app/library", "/app/library/climb", "/app/movement/draft-climb-standing-wall-climb", "/app/privacy", "/app/start", "/app/session", "/app/workouts", "/app/workouts/morning-reach", "/app/find", "/app/play/morning-reach"];
 
 test("390px: no horizontal overflow, one H1, alt text, 48px targets, unique titles, noindex except /app", async ({ page }) => {
   // A plan on the device so every screen renders its full state.

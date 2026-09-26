@@ -46,7 +46,9 @@ Without Supabase keys the app uses the built-in seed. Try code `VBTEST` (test cl
 | `pnpm check:board` | Board geometry: 47 anchors per section in rows of 2 and 3, 141 on the Vary Board, 188 on the XT, and counts what `<BoardMap>` renders |
 | `pnpm content:audit` | Content gate: unreviewed movements in published programs; banned copy (cure, heal, guarantee, live longer, diagnos…, the word "free", lorem, outcome and adherence claims, billing terms); images without alt |
 
-`pnpm build` runs `next build --webpack` (the service worker plugin needs webpack).
+`pnpm build` runs `next build --webpack` (the service worker plugin needs webpack). Fonts come from
+Google Fonts at build time; on a machine that cannot reach them, build with
+`NEXT_FONT_GOOGLE_MOCKED_RESPONSES=<mock.js>` (never on Vercel).
 
 ## Supabase setup
 
@@ -88,6 +90,26 @@ and `supabase` across, give the site and the app separate root layouts (`app/(si
    `reviewed_by_eric = true`. `reviewed_at` is stamped automatically and the movement appears in production.
 
 Loosen (Joint Mobilizations) has no movements yet; its genre shows "Soon" until Eric adds them.
+
+## Workouts (the self-guided library)
+
+For board owners without a therapist code, the TRX-style layer: `/app/workouts` (filter by length,
+kind of movement, seated, no band), `/app/workouts/[slug]` (what you'll do + where you clip in),
+`/app/play/[slug]` (the same player as the plan), `/app/find` (three taps to a first workout and a
+plan) and quick workouts on Today. Multi-session programs are the starter plans (`START1`–`START3`).
+
+- Workouts live in `content/workouts.ts`, built only from library movements. One filmed movement feeds
+  many workouts, so every video multiplies.
+- A workout shows in production only when `reviewedByEric` is true on the workout **and** on every
+  movement in it (`lib/workouts.ts`). `pnpm content:audit` fails on a reviewed workout that uses a draft.
+- Workouts run in their own device slot (`vb.activeWorkout`): starting one never replaces a plan
+  session in progress. They are saved on the phone only (`kind: "workout"`) and are never sent to a
+  clinic: no completions, no exercise events. Today and Progress count plan sessions toward the plan
+  and show workouts beside them, plus minutes moved.
+
+**How Eric adds a workout:** copy a block in `content/workouts.ts`, pick 3–5 movements and doses, keep
+the name `[DRAFT] …` and `reviewedByEric: false`, open a preview, then flip it to true and drop the
+`[DRAFT]` prefix once he has done it himself.
 
 ## How Eric builds a program
 

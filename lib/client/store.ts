@@ -41,6 +41,8 @@ export interface LocalCompletion {
   completedAt: string;
   feel: Feel | null;
   items: LocalItem[];
+  /** "workout": a self-guided workout (device only, never synced). Absent: the plan. */
+  kind?: "workout";
 }
 
 /** The session in progress, saved after every exercise so nothing is lost. */
@@ -99,6 +101,7 @@ const KEYS = {
   program: "vb.program",
   completions: "vb.completions",
   active: "vb.active",
+  activeWorkout: "vb.activeWorkout",
   outbox: "vb.outbox",
   settings: "vb.settings",
   profile: "vb.profile",
@@ -205,6 +208,17 @@ export function addCompletion(c: LocalCompletion) {
 export const getActive = () => readJson<ActiveSession | null>(KEYS.active, null);
 export const setActive = (a: ActiveSession | null) => write(KEYS.active, a ? JSON.stringify(a) : null);
 
+/** A self-guided workout in progress: its own slot, so it never replaces the plan's session. */
+export const getActiveWorkout = () => readJson<ActiveSession | null>(KEYS.activeWorkout, null);
+export const setActiveWorkout = (a: ActiveSession | null) => write(KEYS.activeWorkout, a ? JSON.stringify(a) : null);
+
+export interface SessionSlot {
+  get: () => ActiveSession | null;
+  set: (a: ActiveSession | null) => void;
+}
+export const PLAN_SLOT: SessionSlot = { get: getActive, set: setActive };
+export const WORKOUT_SLOT: SessionSlot = { get: getActiveWorkout, set: setActiveWorkout };
+
 /* Outbox: completions waiting to sync ------------------------------------------------------ */
 
 export interface OutboxEntry {
@@ -295,6 +309,7 @@ export async function clearDeviceData() {
 export const useProgram = (): PatientProgram | null | undefined => useSyncExternalStore(subscribe, getProgram, () => undefined);
 export const useCompletions = (): LocalCompletion[] | undefined => useSyncExternalStore(subscribe, getCompletions, () => undefined);
 export const useActive = (): ActiveSession | null | undefined => useSyncExternalStore(subscribe, getActive, () => undefined);
+export const useActiveWorkout = (): ActiveSession | null | undefined => useSyncExternalStore(subscribe, getActiveWorkout, () => undefined);
 export const useSettings = (): Settings => useSyncExternalStore(subscribe, getSettings, () => DEFAULT_SETTINGS);
 export const useProfile = (): Profile | undefined => useSyncExternalStore(subscribe, getProfile, () => undefined);
 export const useHabit = (): Habit | null | undefined => useSyncExternalStore(subscribe, getHabit, () => undefined);
