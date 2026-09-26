@@ -6,13 +6,15 @@ import { AppointmentRow } from "@/components/AppointmentRow";
 import { HexWeekRow } from "@/components/HexCharts";
 import { SessionCard } from "@/components/SessionCard";
 import { ArrowIcon } from "@/components/app/icons";
-import { setProgram, useActive, useCompletions, useHabit, useOutboxCount, useProfile, useProgram } from "@/lib/client/store";
+import { WorkoutCard } from "@/components/app/WorkoutCard";
+import { setProgram, useActive, useActiveWorkout, useCompletions, useHabit, useOutboxCount, useProfile, useProgram } from "@/lib/client/store";
 import { flushEvents } from "@/lib/client/events";
 import { flushOutbox } from "@/lib/client/submit";
 import { disableReminders, syncReminderText } from "@/lib/client/reminders";
 import { t } from "@/lib/copy";
 import { completionsBetween, nextSession, weekDots, weekRange } from "@/lib/progress";
 import type { PatientProgram } from "@/lib/types";
+import { WORKOUT_CODE_PREFIX, type WorkoutMeta } from "@/lib/workout-logic";
 
 function greeting(d: Date) {
   const h = d.getHours();
@@ -31,10 +33,20 @@ export function TodayGreeting() {
   return <p className="min-h-7 text-lg text-muted">{hello ? `${hello}${name ? `, ${name}` : ""}` : " "}</p>;
 }
 
-export function TodayView({ photo }: { photo: string | null }) {
+export function TodayView({ photo, quick: initialQuick = [] }: { photo: string | null; quick?: WorkoutMeta[] }) {
+  const [quick, setQuick] = useState(initialQuick);
+  // The page is static; refresh the list quietly (offline keeps the built one).
+  useEffect(() => {
+    const ctrl = new AbortController();
+    fetch("/app/api/workouts/quick", { signal: ctrl.signal })
+      .then(async (r) => (r.ok ? setQuick((await r.json()) as WorkoutMeta[]) : undefined))
+      .catch(() => {});
+    return () => ctrl.abort();
+  }, []);
   const program = useProgram();
   const completions = useCompletions();
   const active = useActive();
+  const workoutActive = useActiveWorkout();
   const pending = useOutboxCount();
   const habit = useHabit();
   const [ended, setEnded] = useState(false);
@@ -69,7 +81,11 @@ export function TodayView({ photo }: { photo: string | null }) {
   }
 
   const [from, to] = weekRange(now);
-  const thisWeek = completionsBetween(completions, from, to).length;
+  const weekAll = completionsBetween(completions, from, to);
+  // With a plan, the count toward the plan is plan sessions only; workouts are shown alongside.
+  const thisWeek = program ? weekAll.filter((c) => c.kind !== "workout").length : weekAll.length;
+  const weekWorkouts = program ? weekAll.length - thisWeek : 0;
+  const resumeWorkout = workoutActive && workoutActive.phase !== "done" ? workoutActive : null;
   const committed = !!program && habit?.programCode === program.code && !!habit.committedAt;
 
   return (
@@ -95,20 +111,31 @@ export function TodayView({ photo }: { photo: string | null }) {
         })()
       ) : (
         <section aria-labelledby="no-plan-h" className="rounded-2xl border border-line bg-mint-wash p-5 shadow-soft">
-          <p className="eyebrow">Your next session</p>
+          <p className="eyebrow">Get started</p>
           <h2 id="no-plan-h" className="mt-1 text-3xl">
-            Start with your therapist&rsquo;s code
+            {t("today.startTitle")}
           </h2>
-          <p className="mt-2">Your physical therapist gives you a 6-character code. Enter it once and your sessions appear here.</p>
-          <Link href="/app/code" className="btn btn-primary mt-6 w-full">
-            Enter your therapist&rsquo;s code <ArrowIcon />
+          <p className="mt-2">{t("today.startBody")}</p>
+          <Link href="/app/find" className="btn btn-primary mt-6 w-full">
+            {t("find.title")} <ArrowIcon />
           </Link>
-          <p className="mt-4 text-center">
-            <Link href="/app/starter" className="font-semibold text-teal underline">
-              No code? Try a starter plan
-            </Link>
-          </p>
+          <Link href="/app/code" className="btn btn-secondary mt-3 w-full">
+            Enter your therapist&rsquo;s code
+          </Link>
         </section>
+      )}
+
+      {resumeWorkout && (
+        <Link href={`/app/play/${resumeWorkout.programCode.slice(WORKOUT_CODE_PREFIX.length)}`} className="card flex min-h-16 items-center justify-between gap-3 p-4 text-ink no-underline hover:bg-mint-wash">
+          <span>
+            <span className="eyebrow block">Workout in progress</span>
+            <span className="font-display text-xl">{resumeWorkout.sessionName}</span>
+            <span className="block text-sm text-muted">
+              Exercise {resumeWorkout.index + 1} of {resumeWorkout.queue.length} is next
+            </span>
+          </span>
+          <ArrowIcon className="h-5 w-5 shrink-0 text-teal" />
+        </Link>
       )}
 
       {ended && (
@@ -140,12 +167,37 @@ export function TodayView({ photo }: { photo: string | null }) {
         <div className="mt-4">
           <HexWeekRow days={weekDots(completions, now)} />
         </div>
+        {weekWorkouts > 0 && (
+          <p className="mt-2 text-sm text-muted">
+            Plus {weekWorkouts} {weekWorkouts === 1 ? "workout" : "workouts"} on your own this week.
+          </p>
+        )}
         {pending > 0 && (
           <p className="mt-2 text-sm text-muted">
             {pending} {pending === 1 ? "session is" : "sessions are"} saved on this phone and will sync when you are back online. They already count this week.
           </p>
         )}
       </section>
+
+      {quick.length > 0 && (
+        <section aria-labelledby="quick-h">
+          <div className="flex items-baseline justify-between gap-3">
+            <h2 id="quick-h" className="font-sans text-lg font-semibold">
+              {t("today.quickTitle")}
+            </h2>
+            <Link href="/app/workouts" className="btn btn-quiet -mr-4">
+              See all
+            </Link>
+          </div>
+          <ul className="mt-2 space-y-3">
+            {quick.map((w) => (
+              <li key={w.slug}>
+                <WorkoutCard w={w} compact />
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       <AppointmentRow />
       <FromReminder />

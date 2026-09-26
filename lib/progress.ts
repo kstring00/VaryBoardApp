@@ -115,3 +115,11 @@ export function nextSession(program: PatientProgram, all: LocalCompletion[]): Pl
   const i = last ? sessions.findIndex((s) => s.id === last.programSessionId) : -1;
   return sessions[(i + 1) % sessions.length] ?? sessions[0];
 }
+
+/** Minutes moved: each session's start-to-finish time, counted as 1 to 60 minutes (a break mid-session never inflates it). */
+export function minutesMoved(cs: LocalCompletion[]): number {
+  return cs.reduce((t, c) => {
+    const m = (new Date(c.completedAt).getTime() - new Date(c.startedAt).getTime()) / 60000;
+    return t + (Number.isFinite(m) ? Math.min(60, Math.max(1, Math.round(m))) : 0);
+  }, 0);
+}

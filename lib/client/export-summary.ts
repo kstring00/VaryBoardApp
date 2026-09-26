@@ -68,7 +68,7 @@ export async function exportProgressSummary() {
   for (const x of period) if (x.feel) counts[x.feel]++;
   c.text(`Easier ${counts[1]}  ·  Same ${counts[2]}  ·  Harder ${counts[3]}`, regular, 11, ink, 4);
   for (const x of [...period].sort((a, b) => b.completedAt.localeCompare(a.completedAt)).slice(0, 6)) {
-    c.text(`${fmt(new Date(x.completedAt))}: ${x.sessionName}, ${x.items.filter((i) => i.done).length} of ${x.items.length} done${x.feel ? `, felt ${FEEL_TEXT[x.feel]}` : ""}`, regular, 10, muted, 0);
+    c.text(`${fmt(new Date(x.completedAt))}: ${x.sessionName}${x.kind === "workout" ? " (workout on my own)" : ""}, ${x.items.filter((i) => i.done).length} of ${x.items.length} done${x.feel ? `, felt ${FEEL_TEXT[x.feel]}` : ""}`, regular, 10, muted, 0);
   }
   c.space(10);
 

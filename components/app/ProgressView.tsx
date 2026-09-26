@@ -6,7 +6,7 @@ import { HexBarChart } from "@/components/HexCharts";
 import { SegmentedTabs } from "@/components/SegmentedTabs";
 import { ArrowIcon } from "@/components/app/icons";
 import { useCompletions, useProgram } from "@/lib/client/store";
-import { completionsBetween, feelCounts, monthBars, monthRange, weekBars, weekRange, weeksInMonth } from "@/lib/progress";
+import { completionsBetween, feelCounts, minutesMoved, monthBars, monthRange, weekBars, weekRange, weeksInMonth } from "@/lib/progress";
 import type { Feel } from "@/lib/types";
 
 export function ProgressView() {
@@ -21,6 +21,10 @@ export function ProgressView() {
   const perWeek = program?.daysPerWeek ?? 3;
   const [from, to] = range === "week" ? weekRange(now) : monthRange(now);
   const inRange = completionsBetween(completions, from, to);
+  // Toward the plan's target: plan sessions only when there is a plan. Workouts are counted beside it.
+  const planned = program ? inRange.filter((c) => c.kind !== "workout") : inRange;
+  const workouts = inRange.filter((c) => c.kind === "workout").length;
+  const minutes = minutesMoved(inRange);
   const target = range === "week" ? perWeek : perWeek * weeksInMonth(now);
   const bars = range === "week" ? weekBars(completions, now) : monthBars(completions, now);
   const feel = feelCounts(inRange);
@@ -40,11 +44,21 @@ export function ProgressView() {
 
       <section className="card p-5" aria-labelledby="sessions-h">
         <p className="font-display text-5xl text-ink">
-          {inRange.length} <span className="text-muted">/ {target}</span>
+          {planned.length} <span className="text-muted">/ {target}</span>
         </p>
         <h2 id="sessions-h" className="mt-1 font-sans text-lg font-semibold">
-          Sessions completed this {range}
+          {program ? "Plan sessions" : "Sessions"} completed this {range}
         </h2>
+        <dl className="mt-4 grid grid-cols-2 gap-3 text-center">
+          <div className="rounded-xl bg-mint-wash p-3">
+            <dt className="text-sm font-semibold">Minutes moved</dt>
+            <dd className="font-display text-3xl">{minutes}</dd>
+          </div>
+          <div className="rounded-xl bg-mint-wash p-3">
+            <dt className="text-sm font-semibold">{program ? "Workouts on your own" : "Workouts"}</dt>
+            <dd className="font-display text-3xl">{program ? workouts : inRange.length}</dd>
+          </div>
+        </dl>
         <div className="mt-5">
           <HexBarChart
             bars={bars}
@@ -52,7 +66,7 @@ export function ProgressView() {
             summary={bars.map((b) => `${b.longLabel}: ${b.sessions} ${b.sessions === 1 ? "session" : "sessions"}`).join(". ")}
           />
         </div>
-        <p className="mt-2 text-sm text-muted">Each hex is a session. Lighter mint means some exercises were skipped.</p>
+        <p className="mt-2 text-sm text-muted">Each hex is a session or workout. Lighter mint means some exercises were skipped.</p>
       </section>
 
       <section className="card p-5" aria-labelledby="feel-h">

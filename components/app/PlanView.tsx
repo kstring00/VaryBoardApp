@@ -35,8 +35,8 @@ export function PlanView() {
           </Link>
         </p>
         <p className="mt-10 text-center">
-          <Link href="/app/library" className="text-teal underline">
-            Browse the movement library
+          <Link href="/app/find" className="text-teal underline">
+            No code? Find a workout to start with
           </Link>
         </p>
       </>

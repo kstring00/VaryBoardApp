@@ -16,6 +16,7 @@
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import { GENRES, MOVEMENTS, STARTER_PROGRAMS } from "../content/seed";
+import { WORKOUTS } from "../content/workouts";
 
 const root = process.cwd();
 const failures: string[] = [];
@@ -30,6 +31,19 @@ for (const p of STARTER_PROGRAMS) {
   if (p.reviewedByEric && drafts.length) fail(`seed: starter plan ${p.code} is published (reviewed) but uses unreviewed movements: ${drafts.join(", ")}`);
   else if (drafts.length) warnings.push(`seed: starter plan ${p.code} is unreviewed, so it stays hidden in production (${drafts.length} draft movements)`);
 }
+
+/* 1b. Self-guided workouts: same rule, plus every movement must exist and drafts are labeled. */
+const known = new Set(MOVEMENTS.map((m) => m.slug));
+for (const w of WORKOUTS) {
+  const slugs = w.blocks.map((b) => b.movementSlug);
+  const missing = slugs.filter((s) => !known.has(s));
+  if (missing.length) fail(`workouts: ${w.slug} uses unknown movements: ${missing.join(", ")}`);
+  const drafts = slugs.filter((s) => !reviewed.has(s));
+  if (w.reviewedByEric && drafts.length) fail(`workouts: ${w.slug} is published (reviewed) but uses unreviewed movements: ${drafts.join(", ")}`);
+  if (!w.reviewedByEric && !w.name.startsWith("[DRAFT] ")) fail(`workouts: unreviewed workout "${w.name}" must be labeled [DRAFT]`);
+  if (w.blocks.length > 6) fail(`workouts: ${w.slug} has ${w.blocks.length} exercises (six at most)`);
+}
+if (WORKOUTS.some((w) => !w.reviewedByEric)) warnings.push(`workouts: ${WORKOUTS.filter((w) => !w.reviewedByEric).length} of ${WORKOUTS.length} workouts await Eric's review (hidden in production)`);
 
 async function databaseCheck() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
