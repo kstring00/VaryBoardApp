@@ -1,0 +1,260 @@
+@import "tailwindcss";
+
+/*
+  Vary Board App tokens. Palette from the app brief; type (Fraunces + Inter) from the site.
+  Audience is 40+: body text is 18px at rest and scales with the Settings text size
+  (html[data-text-size]). Spacing is in px so bigger text never squeezes the layout.
+  Mint is a fill colour, never text on plaster (contrast too low). Buttons are deep teal.
+*/
+@theme {
+  --color-plaster: #f1efea;
+  --color-surface: #fbfaf7;
+  --color-mint: #62bba6;
+  --color-mint-soft: #9ed6c6;
+  --color-mint-wash: #e3f2ec;
+  --color-teal: #1e4d46;
+  --color-teal-hover: #163a35;
+  --color-ink: #16302b;
+  --color-muted: #475d58;
+  --color-line: #d6d2c8;
+  --color-dormant: #d9d5cc;
+  --color-warn-bg: #fdf1dc;
+  --color-warn-ink: #6b3d0a;
+  --color-danger: #9b2c1f;
+
+  /* The board itself (schematic). Product colours, not UI colours. */
+  --color-board-face: #6f9c9d;
+  --color-board-rail: #9a9e9f;
+  --color-board-hole: #3d5657;
+
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  --font-display: var(--font-fraunces), ui-serif, Georgia, "Times New Roman", serif;
+
+  --spacing: 4px;
+
+  --text-sm: 0.9rem;
+  --text-sm--line-height: 1.45;
+  --text-base: 1rem;
+  --text-base--line-height: 1.6;
+  --text-lg: 1.125rem;
+  --text-lg--line-height: 1.5;
+  --text-xl: 1.3rem;
+  --text-xl--line-height: 1.35;
+  --text-2xl: 1.6rem;
+  --text-2xl--line-height: 1.25;
+  --text-3xl: 2rem;
+  --text-3xl--line-height: 1.15;
+  --text-4xl: 2.4rem;
+  --text-4xl--line-height: 1.1;
+
+  --radius-lg: 12px;
+  --radius-xl: 18px;
+  --radius-2xl: 26px;
+
+  --shadow-soft: 0 1px 2px rgb(22 48 43 / 0.06), 0 10px 32px -14px rgb(22 48 43 / 0.22);
+  --ease-calm: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@layer base {
+  html {
+    font-size: 18px;
+    -webkit-text-size-adjust: 100%;
+    background: var(--color-plaster);
+    color-scheme: light;
+  }
+  html[data-text-size="large"] {
+    font-size: 20px;
+  }
+  html[data-text-size="largest"] {
+    font-size: 22px;
+  }
+  body {
+    background: var(--color-plaster);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    overflow-wrap: break-word;
+  }
+  h1,
+  h2,
+  h3 {
+    font-family: var(--font-display);
+    font-weight: 500;
+    letter-spacing: -0.01em;
+    text-wrap: balance;
+  }
+  :focus-visible {
+    outline: 3px solid var(--color-teal);
+    outline-offset: 3px;
+    border-radius: 6px;
+  }
+  a {
+    text-underline-offset: 3px;
+  }
+  button,
+  [role="button"],
+  input,
+  select,
+  textarea {
+    font: inherit;
+  }
+}
+
+/* Reduced motion: the OS setting or the in-app Settings switch. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+html[data-motion="reduce"] *,
+html[data-motion="reduce"] *::before,
+html[data-motion="reduce"] *::after {
+  animation-duration: 0.001ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.001ms !important;
+  scroll-behavior: auto !important;
+}
+
+@layer components {
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    min-height: 56px;
+    padding: 12px 24px;
+    border-radius: 999px;
+    font-weight: 600;
+    font-size: var(--text-lg);
+    line-height: 1.2;
+    text-align: center;
+    text-decoration: none;
+    cursor: pointer;
+    transition: background-color 160ms var(--ease-calm), transform 160ms var(--ease-calm);
+  }
+  .btn:active {
+    transform: translateY(1px);
+  }
+  .btn-primary {
+    background: var(--color-teal);
+    color: #fff;
+  }
+  .btn-primary:hover {
+    background: var(--color-teal-hover);
+  }
+  .btn-secondary {
+    background: transparent;
+    color: var(--color-teal);
+    box-shadow: inset 0 0 0 2px var(--color-teal);
+  }
+  .btn-secondary:hover {
+    background: var(--color-mint-wash);
+  }
+  .btn-quiet {
+    min-height: 48px;
+    padding: 8px 16px;
+    background: transparent;
+    color: var(--color-teal);
+    font-size: var(--text-base);
+    text-decoration: underline;
+  }
+  .btn[disabled],
+  .btn[aria-disabled="true"] {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+  .card {
+    background: var(--color-surface);
+    border: 1px solid var(--color-line);
+    border-radius: var(--radius-xl);
+  }
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 32px;
+    padding: 2px 12px;
+    border-radius: 999px;
+    background: var(--color-mint-wash);
+    color: var(--color-ink);
+    font-size: var(--text-sm);
+    font-weight: 500;
+  }
+  .field {
+    width: 100%;
+    min-height: 56px;
+    padding: 12px 16px;
+    border-radius: var(--radius-lg);
+    border: 2px solid var(--color-line);
+    background: #fff;
+    color: var(--color-ink);
+  }
+  .field:focus {
+    border-color: var(--color-teal);
+    outline: none;
+  }
+  .label {
+    display: block;
+    font-weight: 600;
+    margin-bottom: 6px;
+  }
+  .eyebrow {
+    font-size: var(--text-sm);
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--color-muted);
+  }
+}
+
+/* Honeycomb: the signature. A calm fill when a cell completes (ease-out, no bounce). */
+@keyframes hex-fill {
+  from {
+    transform: scale(0.6);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+.hex-fill-in {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: hex-fill 700ms var(--ease-calm) both;
+}
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.fade-up {
+  animation: fade-up 500ms var(--ease-calm) both;
+}
+
+/* Section edges dissolve into hex outlines. */
+.hex-edge {
+  height: 28px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='24.25' viewBox='0 0 28 24.25'%3E%3Cpath d='M7 0.5 L21 0.5 L27.5 12.1 L21 23.75 L7 23.75 L0.5 12.1 Z' fill='none' stroke='%2362bba6' stroke-opacity='.45'/%3E%3C/svg%3E");
+  background-repeat: repeat-x;
+  background-size: 28px 24.25px;
+  -webkit-mask-image: linear-gradient(to bottom, #000, transparent);
+  mask-image: linear-gradient(to bottom, #000, transparent);
+}
+
+@media print {
+  .no-print {
+    display: none !important;
+  }
+}
